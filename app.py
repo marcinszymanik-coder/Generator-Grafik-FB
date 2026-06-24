@@ -248,7 +248,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
-st.title("🎨 Automatyczny Generator Grafik")
+st.title("🎨 Automatyczny generator grafik AVT")
 st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
 
 pobierz_nowoczesne_czcionki()
