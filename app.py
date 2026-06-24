@@ -12,10 +12,14 @@ import streamlit as st
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJE BAZOWE (Logika pozostaje ta sama)
+# FUNKCJE BAZOWE (Uniwersalne dla wielu portali)
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
-    smieci = ["- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom"]
+    """Usuwa dopiski portali (Budujemy Dom, Czas na Wnętrze itp.) z końca tytułu."""
+    smieci = [
+        "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
+        "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze"
+    ]
     tytul_czysty = tytul_surowy.strip()
     for s in smieci:
         if tytul_czysty.lower().endswith(s.lower()):
@@ -23,13 +27,19 @@ def wyczysc_tytul_portalu(tytul_surowy):
     return tytul_czysty.strip("- – |").strip()
 
 def pobierz_dane_z_artykulu(url):
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """Uniwersalne pobieranie danych odporne na różnice między portalami."""
+    # Dodano bogatsze nagłówki, by serwery nie blokowały połączenia jako bota
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
+    
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Tytuł
+        # --- 1. Tytuł ---
         tytul = "BRAK TYTUŁU"
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
@@ -38,41 +48,55 @@ def pobierz_dane_z_artykulu(url):
             if soup.title:
                 tytul = wyczysc_tytul_portalu(soup.title.string)
 
-        # Zdjęcie
+        # --- 2. Zdjęcie (Uniwersalne poszukiwania) ---
         img_url = None
-        linki_zdjec = []
+        
+        # Baza: oficjalny obrazek dla Facebooka (og:image)
+        og_image = soup.find('meta', property='og:image')
+        if og_image and og_image.get('content'):
+            img_url = og_image.get('content')
+
+        # Skrypt próbuje znaleźć coś jeszcze większego w kodzie HTML (atrybuty srcset)
+        najwieksza_szerokosc = 0
+        najlepszy_url_ze_strony = None
+
         for tag in soup.find_all(['source', 'img']):
             srcset = tag.get('srcset')
             if srcset:
                 for czesc in srcset.split(','):
                     podzial = czesc.strip().split()
-                    if podzial: linki_zdjec.append(podzial[0])
-            src = tag.get('src')
-            if src: linki_zdjec.append(src)
+                    if len(podzial) == 2:
+                        potencjalny_url = podzial[0]
+                        szerokosc_str = podzial[1].lower().replace('w', '')
+                        try:
+                            szerokosc = int(szerokosc_str)
+                            if szerokosc > najwieksza_szerokosc:
+                                najwieksza_szerokosc = szerokosc
+                                najlepszy_url_ze_strony = potencjalny_url
+                        except ValueError:
+                            pass
 
-        najlepszy_strzal = None
-        for link in linki_zdjec:
-            if "/i/" in link and "1050x0" in link:
-                najlepszy_strzal = link
-                break
-        if not najlepszy_strzal:
-            for link in linki_zdjec:
-                if "/i/" in link and ("budujemydompl" in link or "klimatyzacja" in link or "garderoba" in link):
-                    najlepszy_strzal = link
-                    break
-        if najlepszy_strzal:
-            img_url = urljoin(url, najlepszy_strzal)
+        # Jeśli znaleziona ukryta grafika jest naprawdę duża, nadpisujemy standardowy og:image
+        if najlepszy_url_ze_strony and najwieksza_szerokosc > 800:
+            img_url = najlepszy_url_ze_strony
 
+        # --- 3. Pobieranie i zapis ---
         nazwa_zdjecia = None
         if img_url:
-            img_data = requests.get(img_url, headers=headers).content
+            # urljoin naprawia sytuację, gdy link na stronie jest tzw. linkiem względnym (bez https://)
+            img_url = urljoin(url, img_url) 
+            
+            img_data = requests.get(img_url, headers=headers, timeout=10).content
             obrazek_w_pamieci = Image.open(BytesIO(img_data))
             czysty_obrazek_rgb = obrazek_w_pamieci.convert('RGB')
+            
             nazwa_zdjecia = "tymczasowe_zdjecie.jpg"
             czysty_obrazek_rgb.save(nazwa_zdjecia, format='JPEG', quality=100)
         
         return tytul, nazwa_zdjecia
+
     except Exception as e:
+        print(f"Błąd pobierania danych: {e}")
         return None, None
 
 def pobierz_nowoczesne_czcionki():
@@ -101,6 +125,9 @@ def zawin_tekst(tekst, font, max_szerokosc):
         linie.append(" ".join(aktualna_linia))
     return linie
 
+# ==========================================
+# GENERATOR 1: MAGAZYN
+# ==========================================
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa):
     szerokosc, wysokosc = 1080, 1080
     canvas = Image.new("RGBA", (szerokosc, wysokosc), (0, 0, 0, 255))
@@ -160,6 +187,9 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
+# ==========================================
+# GENERATOR 2: SPLIT SCREEN
+# ==========================================
 def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa):
     szerokosc, wysokosc = 1080, 1080
     wys_zdjecia = int(szerokosc * 9 / 16)
@@ -212,6 +242,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
+
 # ==========================================
 # INTERFEJS STREAMLIT
 # ==========================================
@@ -220,18 +251,15 @@ st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="
 st.title("🎨 Automatyczny Generator Grafik")
 st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
 
-# Pobieranie czcionek przy starcie aplikacji
 pobierz_nowoczesne_czcionki()
 
-# Skanowanie folderu "logotypy"
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
-# Formularz UI
 with st.container():
     if not dostepne_loga:
-        st.warning("⚠️ Folder 'logotypy' jest pusty. Dodaj pliki .png przed wdrożeniem.")
+        st.warning("⚠️ Folder 'logotypy' jest pusty. Dodaj pliki .png z logotypami.")
         wybrane_logo = None
     else:
         wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
@@ -240,19 +268,17 @@ with st.container():
     
     if st.button("🚀 Generuj Grafiki", type="primary"):
         if url_input:
-            with st.spinner("Pobieram dane ze strony i renderuję obrazy... To zajmie kilka sekund."):
+            with st.spinner("Pobieram dane ze strony i renderuję obrazy..."):
                 sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
                 
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
-                    # Generowanie
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg")
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg")
                     
                     st.success(f"Udało się! Tytuł: {tytul}")
                     
-                    # Wyświetlanie i przyciski pobierania
                     col1, col2 = st.columns(2)
                     
                     with col1:
@@ -265,10 +291,9 @@ with st.container():
                         with open("split.jpg", "rb") as file:
                             st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
                     
-                    # Sprzątanie
                     if os.path.exists(zdjecie_tmp):
                         os.remove(zdjecie_tmp)
                 else:
-                    st.error("Wystąpił błąd podczas pobierania danych z tego linku.")
+                    st.error("Wystąpił błąd podczas pobierania danych. Sprawdź, czy link jest poprawny lub czy artykuł posiada zdjęcie otwierające.")
         else:
             st.warning("Wpisz link przed kliknięciem przycisku!")
