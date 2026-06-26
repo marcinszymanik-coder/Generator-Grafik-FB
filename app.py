@@ -12,6 +12,31 @@ import streamlit as st
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
+# FUNKCJA ANALITYCZNA (Ukryta)
+# ==========================================
+def aktualizuj_licznik(styl_grafiki):
+    """Zapisuje ilość pobrań do pliku tekstowego i wysyła info do logów serwera."""
+    plik_licznika = "licznik_pobran.txt"
+    try:
+        if os.path.exists(plik_licznika):
+            with open(plik_licznika, "r") as f:
+                licznik = int(f.read().strip())
+        else:
+            licznik = 0
+    except:
+        licznik = 0
+        
+    licznik += 1
+    
+    try:
+        with open(plik_licznika, "w") as f:
+            f.write(str(licznik))
+        # To zobaczysz tylko Ty w zakładce "Manage app" -> "Logs"
+        print(f"📈 [STATYSTYKA] Ktoś pobrał grafikę ({styl_grafiki}). Łączna liczba pobrań ogółem: {licznik}")
+    except Exception as e:
+        print(f"Błąd zapisu statystyk: {e}")
+
+# ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
@@ -36,7 +61,6 @@ def pobierz_dane_z_artykulu(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Tytuł
         tytul = "BRAK TYTUŁU"
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
@@ -45,7 +69,6 @@ def pobierz_dane_z_artykulu(url):
             if soup.title:
                 tytul = wyczysc_tytul_portalu(soup.title.string)
 
-        # Zdjęcie
         img_url = None
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
@@ -171,7 +194,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
-
 # ==========================================
 # GENERATOR 2: SPLIT SCREEN
 # ==========================================
@@ -248,13 +270,12 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
-
 # ==========================================
 # INTERFEJS STREAMLIT
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
-st.title("🎨 Automatyczny generator grafik")
+st.title("🎨 Automatyczny Generator Grafik")
 st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
 
 pobierz_nowoczesne_czcionki()
@@ -262,7 +283,6 @@ pobierz_nowoczesne_czcionki()
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 
-# Przygotowanie listy wyboru
 OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
@@ -281,20 +301,17 @@ else:
 
 with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
-    
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    if st.button("🚀 Generuj grafiki", type="primary"):
+    if st.button("🚀 Generuj Grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 
-                # Ustalenie ścieżki do logo na podstawie wyboru (None, jeśli 'Bez loga')
                 if wybrane_logo == OPCJA_BEZ_LOGA:
                     sciezka_do_logo = None
                 else:
                     sciezka_do_logo = os.path.join("logotypy", wybrane_logo)
                 
-                # Sprawdzenie warunku dla "Audio" 
                 is_audio_brand = False
                 if wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower():
                     is_audio_brand = True
@@ -305,19 +322,25 @@ with st.container():
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
-                    st.success(f"Udało się wygenerować szablony!")
+                    st.success(f"Udało się wygenerować szablony dla: {tytul}")
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         st.image("magazyn.jpg", caption="Styl Magazyn", use_column_width=True)
                         with open("magazyn.jpg", "rb") as file:
-                            st.download_button(label="📥 Pobierz Magazyn", data=file, file_name="fb_magazyn.jpg", mime="image/jpeg", use_container_width=True)
+                            # Nasłuchujemy kliknięcia
+                            pobrano_magazyn = st.download_button(label="📥 Pobierz Magazyn", data=file, file_name="fb_magazyn.jpg", mime="image/jpeg", use_container_width=True)
+                            if pobrano_magazyn:
+                                aktualizuj_licznik("Magazyn")
                             
                     with col2:
                         st.image("split.jpg", caption="Styl Split Screen", use_column_width=True)
                         with open("split.jpg", "rb") as file:
-                            st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
+                            # Nasłuchujemy kliknięcia
+                            pobrano_split = st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
+                            if pobrano_split:
+                                aktualizuj_licznik("Split Screen")
                     
                     if os.path.exists(zdjecie_tmp):
                         os.remove(zdjecie_tmp)
