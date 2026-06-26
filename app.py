@@ -12,13 +12,14 @@ import streamlit as st
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJE BAZOWE (Uniwersalne dla wielu portali)
+# FUNKCJE BAZOWE
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
-    """Usuwa dopiski portali (Budujemy Dom, Czas na Wnętrze itp.) z końca tytułu."""
+    """Usuwa dopiski portali z końca tytułu, chroniąc treść."""
     smieci = [
         "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
-        "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze"
+        "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze",
+        "- audio.com.pl", "- audio", "| audio.com.pl", "- Testy, ceny", "- Test"
     ]
     tytul_czysty = tytul_surowy.strip()
     for s in smieci:
@@ -27,19 +28,16 @@ def wyczysc_tytul_portalu(tytul_surowy):
     return tytul_czysty.strip("- – |").strip()
 
 def pobierz_dane_z_artykulu(url):
-    """Uniwersalne pobieranie danych odporne na różnice między portalami."""
-    # Dodano bogatsze nagłówki, by serwery nie blokowały połączenia jako bota
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
     }
-    
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # --- 1. Tytuł ---
+        # Tytuł
         tytul = "BRAK TYTUŁU"
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
@@ -48,55 +46,44 @@ def pobierz_dane_z_artykulu(url):
             if soup.title:
                 tytul = wyczysc_tytul_portalu(soup.title.string)
 
-        # --- 2. Zdjęcie (Uniwersalne poszukiwania) ---
+        # Zdjęcie
         img_url = None
-        
-        # Baza: oficjalny obrazek dla Facebooka (og:image)
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
             img_url = og_image.get('content')
 
-        # Skrypt próbuje znaleźć coś jeszcze większego w kodzie HTML (atrybuty srcset)
-        najwieksza_szerokosc = 0
-        najlepszy_url_ze_strony = None
-
+        linki_zdjec = []
         for tag in soup.find_all(['source', 'img']):
             srcset = tag.get('srcset')
             if srcset:
                 for czesc in srcset.split(','):
                     podzial = czesc.strip().split()
-                    if len(podzial) == 2:
-                        potencjalny_url = podzial[0]
-                        szerokosc_str = podzial[1].lower().replace('w', '')
-                        try:
-                            szerokosc = int(szerokosc_str)
-                            if szerokosc > najwieksza_szerokosc:
-                                najwieksza_szerokosc = szerokosc
-                                najlepszy_url_ze_strony = potencjalny_url
-                        except ValueError:
-                            pass
+                    if podzial: linki_zdjec.append(podzial[0])
+            src = tag.get('src')
+            if src: linki_zdjec the_append = src
+            if src: linki_zdjec.append(src)
 
-        # Jeśli znaleziona ukryta grafika jest naprawdę duża, nadpisujemy standardowy og:image
-        if najlepszy_url_ze_strony and najwieksza_szerokosc > 800:
-            img_url = najlepszy_url_ze_strony
+        # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości
+        najlepszy_strzal = None
+        for link in linki_zdjec:
+            if "/i/" in link and "1050x0" in link:
+                najlepszy_strzal = link
+                break
+        
+        if najlepszy_strzal:
+            img_url = najlepszy_strzal
 
-        # --- 3. Pobieranie i zapis ---
         nazwa_zdjecia = None
         if img_url:
-            # urljoin naprawia sytuację, gdy link na stronie jest tzw. linkiem względnym (bez https://)
             img_url = urljoin(url, img_url) 
-            
             img_data = requests.get(img_url, headers=headers, timeout=10).content
             obrazek_w_pamieci = Image.open(BytesIO(img_data))
             czysty_obrazek_rgb = obrazek_w_pamieci.convert('RGB')
-            
             nazwa_zdjecia = "tymczasowe_zdjecie.jpg"
             czysty_obrazek_rgb.save(nazwa_zdjecia, format='JPEG', quality=100)
         
         return tytul, nazwa_zdjecia
-
     except Exception as e:
-        print(f"Błąd pobierania danych: {e}")
         return None, None
 
 def pobierz_nowoczesne_czcionki():
@@ -126,9 +113,9 @@ def zawin_tekst(tekst, font, max_szerokosc):
     return linie
 
 # ==========================================
-# GENERATOR 1: MAGAZYN
+# GENERATOR 1: MAGAZYN (Z inteligentnym przyciemnieniem dla Audio)
 # ==========================================
-def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa):
+def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
     canvas = Image.new("RGBA", (szerokosc, wysokosc), (0, 0, 0, 255))
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
@@ -151,8 +138,11 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     gradient = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
     draw_grad = ImageDraw.Draw(gradient)
     start_grad = int(wysokosc * 0.25) 
+    
+    # Warunek: Dla audio robimy odrobinę mocniejszy gradient (max krycie 245 zamiast 235), by napisy idealnie odcinały się od gałek i wyświetlaczy
+    max_alpha = 245 if is_audio else 235
     for y in range(start_grad, wysokosc):
-        alpha = int(235 * ((y - start_grad) / (wysokosc - start_grad)))
+        alpha = int(max_alpha * ((y - start_grad) / (wysokosc - start_grad)))
         draw_grad.line([(0, y), (szerokosc, y)], fill=(0, 0, 0, alpha))
     canvas = Image.alpha_composite(canvas, gradient)
     draw = ImageDraw.Draw(canvas)
@@ -160,9 +150,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
-        x_logo = szerokosc - logo.width - 40
-        y_logo = 40
-        canvas.paste(logo, (x_logo, y_logo), logo)
+        canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
 
     rozmiar_fontu = 46 if len(tekst_glowny) > 50 else 55
     try:
@@ -187,13 +175,17 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
+
 # ==========================================
-# GENERATOR 2: SPLIT SCREEN
+# GENERATOR 2: SPLIT SCREEN (Dedykowana prezentacja dla Audio)
 # ==========================================
-def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa):
+def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
     wys_zdjecia = int(szerokosc * 9 / 16)
-    canvas = Image.new("RGBA", (szerokosc, wysokosc), (25, 30, 35))
+    
+    # Warunek: Jeśli to audio, dajemy głęboką matową czerń zamiast grafitu
+    kolor_tla_tekstu = (18, 18, 20) if is_audio else (25, 30, 35)
+    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla_tekstu)
     
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
@@ -213,6 +205,10 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         canvas.paste(img, (0, 0))
 
     draw = ImageDraw.Draw(canvas)
+
+    # Warunek: Jeśli to marka audio, rysujemy stylową, 4-pikselową czerwoną linię odcinającą zdjęcie od tekstu
+    if is_audio:
+        draw.rectangle([0, wys_zdjecia, szerokosc, wys_zdjecia + 4], fill=(215, 40, 40, 255))
 
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
@@ -237,7 +233,10 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-    draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=(180, 180, 180, 255), font=font_stopka) 
+    
+    # Dla audio stopka jest śnieżnobiała, dla reszty lekko szara
+    kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
+    draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka) 
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
@@ -248,7 +247,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
-st.title("🎨 Generator grafik FB AVT")
+st.title("🎨 Automatyczny Generator Grafik")
 st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
 
 pobierz_nowoczesne_czcionki()
@@ -268,16 +267,22 @@ with st.container():
     
     if st.button("🚀 Generuj Grafiki", type="primary"):
         if url_input:
-            with st.spinner("Pobieram dane ze strony i renderuję obrazy..."):
+            with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
+                
+                # Sprawdzamy inteligentny warunek: czy wybrane logo dotyczy marki AUDIO
+                is_audio_brand = False
+                if wybrane_logo and "audio" in wybrane_logo.lower():
+                    is_audio_brand = True
                 
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
-                    generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg")
-                    generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg")
+                    # Przekazujemy informację o marce audio do generatorów
+                    generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
+                    generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
-                    st.success(f"Udało się! Tytuł: {tytul}")
+                    st.success(f"Udało się wygenerować szablony!")
                     
                     col1, col2 = st.columns(2)
                     
@@ -294,6 +299,6 @@ with st.container():
                     if os.path.exists(zdjecie_tmp):
                         os.remove(zdjecie_tmp)
                 else:
-                    st.error("Wystąpił błąd podczas pobierania danych. Sprawdź, czy link jest poprawny lub czy artykuł posiada zdjęcie otwierające.")
+                    st.error("Wystąpił błąd podczas pobierania danych. Serwer odrzucił połączenie lub artykuł nie ma zdjęcia głównego.")
         else:
             st.warning("Wpisz link przed kliknięciem przycisku!")
