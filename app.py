@@ -117,39 +117,19 @@ def zawin_tekst(tekst, font, max_szerokosc):
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
     canvas = Image.new("RGBA", (szerokosc, wysokosc), (0, 0, 0, 255))
-    
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
-        
-        if is_audio:
-            # Zmieść w kadrze i dorób tło ze skraju zdjęcia (Chronimy sprzęt przed ucięciem)
-            wspolczynnik = min(szerokosc / img.width, wysokosc / img.height)
-            nowa_szer = int(img.width * wspolczynnik)
-            nowa_wys = int(img.height * wspolczynnik)
-            img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
-            
-            # Próbkowanie koloru tła (lewy górny róg)
-            kolor_probki = img.getpixel((0, 0))
-            tlo = Image.new("RGBA", (szerokosc, wysokosc), kolor_probki)
-            
-            offset_x = (szerokosc - nowa_szer) // 2
-            offset_y = (wysokosc - nowa_wys) // 2
-            tlo.paste(img_resized, (offset_x, offset_y))
-            img = tlo
+        prop_docelowa = szerokosc / wysokosc
+        prop_zdjecia = img.width / img.height
+        if prop_zdjecia > prop_docelowa:
+            nowa_szer = int(prop_docelowa * img.height)
+            margines = (img.width - nowa_szer) // 2
+            img = img.crop((margines, 0, margines + nowa_szer, img.height))
         else:
-            # Kadrowanie wypełniające (Cover - Wnętrza)
-            prop_docelowa = szerokosc / wysokosc
-            prop_zdjecia = img.width / img.height
-            if prop_zdjecia > prop_docelowa:
-                nowa_szer = int(prop_docelowa * img.height)
-                margines = (img.width - nowa_szer) // 2
-                img = img.crop((margines, 0, margines + nowa_szer, img.height))
-            else:
-                nowa_wys = int(img.width / prop_docelowa)
-                margines = (img.height - nowa_wys) // 2
-                img = img.crop((0, margines, img.width, margines + nowa_wys))
-            img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
-            
+            nowa_wys = int(img.width / prop_docelowa)
+            margines = (img.height - nowa_wys) // 2
+            img = img.crop((0, margines, img.width, margines + nowa_wys))
+        img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
         enhancer_sharp = ImageEnhance.Sharpness(img)
         img = enhancer_sharp.enhance(1.2)
         canvas.paste(img, (0, 0))
@@ -208,21 +188,17 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
-            # Zmieść całe i próbkuj tło
             wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
             img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
-            
             kolor_probki = img.getpixel((0, 0))
             tlo = Image.new("RGBA", (szerokosc, wys_zdjecia), kolor_probki)
-            
             offset_x = (szerokosc - nowa_szer) // 2
             offset_y = (wys_zdjecia - nowa_wys) // 2
             tlo.paste(img_resized, (offset_x, offset_y))
             img = tlo
         else:
-            # Kadrowanie wypełniające (Cover)
             prop_docelowa = szerokosc / wys_zdjecia
             prop_zdjecia = img.width / img.height
             if prop_zdjecia > prop_docelowa:
@@ -287,7 +263,15 @@ pobierz_nowoczesne_czcionki()
 
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
+    
+# Pobranie listy i sortowanie (Budujemy Dom na start)
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
+if dostepne_loga:
+    dostepne_loga.sort()  # Najpierw alfabetycznie dla porządku
+    bd_logo_index = next((i for i, v in enumerate(dostepne_loga) if "budujemydom" in v.lower()), None)
+    if bd_logo_index is not None:
+        bd_logo = dostepne_loga.pop(bd_logo_index)
+        dostepne_loga.insert(0, bd_logo)
 
 with st.container():
     if not dostepne_loga:
@@ -298,7 +282,7 @@ with st.container():
     
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    if st.button("🚀 Generuj grafiki", type="primary"):
+    if st.button("🚀 Generuj Grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
