@@ -254,7 +254,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
-st.title("🎨 Automatyczny Generator Grafik")
+st.title("🎨 Automatyczny generator grafik")
 st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
 
 pobierz_nowoczesne_czcionki()
@@ -284,7 +284,7 @@ with st.container():
     
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    if st.button("🚀 Generuj Grafiki", type="primary"):
+    if st.button("🚀 Generuj grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 
