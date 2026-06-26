@@ -60,7 +60,7 @@ def pobierz_dane_z_artykulu(url):
                     podzial = czesc.strip().split()
                     if podzial: linki_zdjec.append(podzial[0])
             src = tag.get('src')
-            if src: linki_zdjec.append(src)  # TUTAJ BYŁ BŁĄD - TERAZ JEST POPRAWIONE!
+            if src: linki_zdjec.append(src) 
 
         # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości
         najlepszy_strzal = None
@@ -252,7 +252,8 @@ if not os.path.exists("logotypy"):
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
 with st.container():
-    if not dostes_loga := dostepne_loga:
+    # TUTAJ BYŁ BŁĄD! Poprawiony, klasyczny if.
+    if not dostepne_loga:
         st.warning("⚠️ Folder 'logotypy' jest pusty. Dodaj pliki .png z logotypami.")
         wybrane_logo = None
     else:
