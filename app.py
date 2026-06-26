@@ -298,7 +298,7 @@ with st.container():
     
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    if st.button("🚀 Generuj Grafiki", type="primary"):
+    if st.button("🚀 Generuj grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
