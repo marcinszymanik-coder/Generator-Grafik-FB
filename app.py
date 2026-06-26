@@ -15,7 +15,6 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # FUNKCJE BAZOWE
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
-    """Usuwa dopiski portali z końca tytułu, chroniąc treść."""
     smieci = [
         "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
         "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze",
@@ -62,7 +61,6 @@ def pobierz_dane_z_artykulu(url):
             src = tag.get('src')
             if src: linki_zdjec.append(src) 
 
-        # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości
         najlepszy_strzal = None
         for link in linki_zdjec:
             if "/i/" in link and "1050x0" in link:
@@ -263,32 +261,42 @@ pobierz_nowoczesne_czcionki()
 
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
-    
-# Pobranie listy i sortowanie (Budujemy Dom na start)
+
+# Przygotowanie listy wyboru
+OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
+
 if dostepne_loga:
-    dostepne_loga.sort()  # Najpierw alfabetycznie dla porządku
+    dostepne_loga.sort()
     bd_logo_index = next((i for i, v in enumerate(dostepne_loga) if "budujemydom" in v.lower()), None)
+    
     if bd_logo_index is not None:
         bd_logo = dostepne_loga.pop(bd_logo_index)
         dostepne_loga.insert(0, bd_logo)
+        dostepne_loga.insert(1, OPCJA_BEZ_LOGA)
+    else:
+        dostepne_loga.insert(0, OPCJA_BEZ_LOGA)
+else:
+    dostepne_loga = [OPCJA_BEZ_LOGA]
 
 with st.container():
-    if not dostepne_loga:
-        st.warning("⚠️ Folder 'logotypy' jest pusty. Dodaj pliki .png z logotypami.")
-        wybrane_logo = None
-    else:
-        wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
+    wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     
     url_input = st.text_input("🔗 Link do artykułu:")
     
     if st.button("🚀 Generuj Grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
-                sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
                 
+                # Ustalenie ścieżki do logo na podstawie wyboru (None, jeśli 'Bez loga')
+                if wybrane_logo == OPCJA_BEZ_LOGA:
+                    sciezka_do_logo = None
+                else:
+                    sciezka_do_logo = os.path.join("logotypy", wybrane_logo)
+                
+                # Sprawdzenie warunku dla "Audio" 
                 is_audio_brand = False
-                if wybrane_logo and "audio" in wybrane_logo.lower():
+                if wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower():
                     is_audio_brand = True
                 
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
