@@ -60,8 +60,7 @@ def pobierz_dane_z_artykulu(url):
                     podzial = czesc.strip().split()
                     if podzial: linki_zdjec.append(podzial[0])
             src = tag.get('src')
-            if src: linki_zdjec the_append = src
-            if src: linki_zdjec.append(src)
+            if src: linki_zdjec.append(src)  # TUTAJ BYŁ BŁĄD - TERAZ JEST POPRAWIONE!
 
         # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości
         najlepszy_strzal = None
@@ -113,7 +112,7 @@ def zawin_tekst(tekst, font, max_szerokosc):
     return linie
 
 # ==========================================
-# GENERATOR 1: MAGAZYN (Z inteligentnym przyciemnieniem dla Audio)
+# GENERATOR 1: MAGAZYN
 # ==========================================
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
@@ -139,7 +138,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     draw_grad = ImageDraw.Draw(gradient)
     start_grad = int(wysokosc * 0.25) 
     
-    # Warunek: Dla audio robimy odrobinę mocniejszy gradient (max krycie 245 zamiast 235), by napisy idealnie odcinały się od gałek i wyświetlaczy
     max_alpha = 245 if is_audio else 235
     for y in range(start_grad, wysokosc):
         alpha = int(max_alpha * ((y - start_grad) / (wysokosc - start_grad)))
@@ -177,13 +175,12 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
 
 
 # ==========================================
-# GENERATOR 2: SPLIT SCREEN (Dedykowana prezentacja dla Audio)
+# GENERATOR 2: SPLIT SCREEN
 # ==========================================
 def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
     wys_zdjecia = int(szerokosc * 9 / 16)
     
-    # Warunek: Jeśli to audio, dajemy głęboką matową czerń zamiast grafitu
     kolor_tla_tekstu = (18, 18, 20) if is_audio else (25, 30, 35)
     canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla_tekstu)
     
@@ -206,7 +203,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     draw = ImageDraw.Draw(canvas)
 
-    # Warunek: Jeśli to marka audio, rysujemy stylową, 4-pikselową czerwoną linię odcinającą zdjęcie od tekstu
     if is_audio:
         draw.rectangle([0, wys_zdjecia, szerokosc, wys_zdjecia + 4], fill=(215, 40, 40, 255))
 
@@ -234,7 +230,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
     
-    # Dla audio stopka jest śnieżnobiała, dla reszty lekko szara
     kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
     draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka) 
 
@@ -257,7 +252,7 @@ if not os.path.exists("logotypy"):
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
 with st.container():
-    if not dostepne_loga:
+    if not dostes_loga := dostepne_loga:
         st.warning("⚠️ Folder 'logotypy' jest pusty. Dodaj pliki .png z logotypami.")
         wybrane_logo = None
     else:
@@ -270,7 +265,6 @@ with st.container():
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 sciezka_do_logo = os.path.join("logotypy", wybrane_logo) if wybrane_logo else None
                 
-                # Sprawdzamy inteligentny warunek: czy wybrane logo dotyczy marki AUDIO
                 is_audio_brand = False
                 if wybrane_logo and "audio" in wybrane_logo.lower():
                     is_audio_brand = True
@@ -278,7 +272,6 @@ with st.container():
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
-                    # Przekazujemy informację o marce audio do generatorów
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
