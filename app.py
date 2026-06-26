@@ -8,14 +8,14 @@ from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import streamlit as st
 
-# Wyłączenie weryfikacji certyfikatów SSL
+# Wyłączenie weryfikacji certyfikatów SSL na macOS
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
 # FUNKCJA ANALITYCZNA (Ukryta)
 # ==========================================
-def aktualizuj_licznik(styl_grafiki):
-    """Zapisuje ilość pobrań do pliku tekstowego i wysyła info do logów serwera."""
+def aktualizuj_licznik(styl_grafiki, uzyte_logo):
+    """Zapisuje ilość pobrań do pliku tekstowego i wysyła precyzyjne info do logów serwera."""
     plik_licznika = "licznik_pobran.txt"
     try:
         if os.path.exists(plik_licznika):
@@ -28,11 +28,14 @@ def aktualizuj_licznik(styl_grafiki):
         
     licznik += 1
     
+    # Zabezpieczenie na wypadek wyboru "Bez loga"
+    nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
+    
     try:
         with open(plik_licznika, "w") as f:
             f.write(str(licznik))
-        # To zobaczysz tylko Ty w zakładce "Manage app" -> "Logs"
-        print(f"📈 [STATYSTYKA] Ktoś pobrał grafikę ({styl_grafiki}). Łączna liczba pobrań ogółem: {licznik}")
+        # Precyzyjny log dla Ciebie (widoczny w zakładce "Logs" na serwerze):
+        print(f"📈 [STATYSTYKA] Pobrano: Styl = {styl_grafiki} | Logo = {nazwa_marki} | Łącznie pobrań: {licznik}")
     except Exception as e:
         print(f"Błąd zapisu statystyk: {e}")
 
@@ -40,6 +43,7 @@ def aktualizuj_licznik(styl_grafiki):
 # FUNKCJE BAZOWE
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
+    """Usuwa dopiski portali z końca tytułu, chroniąc treść."""
     smieci = [
         "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
         "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze",
@@ -52,6 +56,7 @@ def wyczysc_tytul_portalu(tytul_surowy):
     return tytul_czysty.strip("- – |").strip()
 
 def pobierz_dane_z_artykulu(url):
+    """Pobiera tytuł i zdjęcie, uniwersalnie dla wszystkich portali."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -61,6 +66,7 @@ def pobierz_dane_z_artykulu(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
+        # Tytuł
         tytul = "BRAK TYTUŁU"
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
@@ -69,6 +75,7 @@ def pobierz_dane_z_artykulu(url):
             if soup.title:
                 tytul = wyczysc_tytul_portalu(soup.title.string)
 
+        # Zdjęcie
         img_url = None
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
@@ -84,6 +91,7 @@ def pobierz_dane_z_artykulu(url):
             src = tag.get('src')
             if src: linki_zdjec.append(src) 
 
+        # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości (np. format 1050x0)
         najlepszy_strzal = None
         for link in linki_zdjec:
             if "/i/" in link and "1050x0" in link:
@@ -104,9 +112,11 @@ def pobierz_dane_z_artykulu(url):
         
         return tytul, nazwa_zdjecia
     except Exception as e:
+        print(f"Błąd pobierania danych: {e}")
         return None, None
 
 def pobierz_nowoczesne_czcionki():
+    """Pobiera Montserrat, jeśli nie ma go na serwerze."""
     czcionki = {
         "Montserrat-Bold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Bold.ttf",
         "Montserrat-SemiBold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBold.ttf"
@@ -117,6 +127,7 @@ def pobierz_nowoczesne_czcionki():
             except Exception: pass
 
 def zawin_tekst(tekst, font, max_szerokosc):
+    """Dzieli długie tytuły na zgrabne linie."""
     slowa = tekst.split()
     linie = []
     aktualna_linia = []
@@ -138,23 +149,43 @@ def zawin_tekst(tekst, font, max_szerokosc):
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
     canvas = Image.new("RGBA", (szerokosc, wysokosc), (0, 0, 0, 255))
+    
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
-        prop_docelowa = szerokosc / wysokosc
-        prop_zdjecia = img.width / img.height
-        if prop_zdjecia > prop_docelowa:
-            nowa_szer = int(prop_docelowa * img.height)
-            margines = (img.width - nowa_szer) // 2
-            img = img.crop((margines, 0, margines + nowa_szer, img.height))
+        
+        if is_audio:
+            # Dla audio: Fit & Pad (Zmieść całe i próbkuj tło)
+            wspolczynnik = min(szerokosc / img.width, wysokosc / img.height)
+            nowa_szer = int(img.width * wspolczynnik)
+            nowa_wys = int(img.height * wspolczynnik)
+            img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
+            
+            kolor_probki = img.getpixel((0, 0))
+            tlo = Image.new("RGBA", (szerokosc, wysokosc), kolor_probki)
+            
+            offset_x = (szerokosc - nowa_szer) // 2
+            offset_y = (wysokosc - nowa_wys) // 2
+            tlo.paste(img_resized, (offset_x, offset_y))
+            img = tlo
         else:
-            nowa_wys = int(img.width / prop_docelowa)
-            margines = (img.height - nowa_wys) // 2
-            img = img.crop((0, margines, img.width, margines + nowa_wys))
-        img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
+            # Dla wnętrz: Kadrowanie wypełniające (Cover)
+            prop_docelowa = szerokosc / wysokosc
+            prop_zdjecia = img.width / img.height
+            if prop_zdjecia > prop_docelowa:
+                nowa_szer = int(prop_docelowa * img.height)
+                margines = (img.width - nowa_szer) // 2
+                img = img.crop((margines, 0, margines + nowa_szer, img.height))
+            else:
+                nowa_wys = int(img.width / prop_docelowa)
+                margines = (img.height - nowa_wys) // 2
+                img = img.crop((0, margines, img.width, margines + nowa_wys))
+            img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
+            
         enhancer_sharp = ImageEnhance.Sharpness(img)
         img = enhancer_sharp.enhance(1.2)
         canvas.paste(img, (0, 0))
 
+    # Płynny gradient
     gradient = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
     draw_grad = ImageDraw.Draw(gradient)
     start_grad = int(wysokosc * 0.25) 
@@ -166,6 +197,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas = Image.alpha_composite(canvas, gradient)
     draw = ImageDraw.Draw(canvas)
 
+    # Logo
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
@@ -177,6 +209,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 24)
     except Exception: return
 
+    # Rysowanie Tekstu
     kolor_biel = (255, 255, 255, 255)
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
@@ -187,12 +220,14 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
         y_tekstu_poczatkowy += wysokosc_linii
 
+    # Stopka
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
     draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
+
 
 # ==========================================
 # GENERATOR 2: SPLIT SCREEN
@@ -208,6 +243,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
+            # Dla audio: Fit & Pad (Zmieść całe i próbkuj tło)
             wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
@@ -219,6 +255,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
             tlo.paste(img_resized, (offset_x, offset_y))
             img = tlo
         else:
+            # Dla wnętrz: Kadrowanie wypełniające (Cover)
             prop_docelowa = szerokosc / wys_zdjecia
             prop_zdjecia = img.width / img.height
             if prop_zdjecia > prop_docelowa:
@@ -237,9 +274,11 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     draw = ImageDraw.Draw(canvas)
 
+    # Stylistyka Audio: Czerwony akcent
     if is_audio:
         draw.rectangle([0, wys_zdjecia, szerokosc, wys_zdjecia + 4], fill=(215, 40, 40, 255))
 
+    # Logo
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
@@ -251,6 +290,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 22)
     except Exception: return
 
+    # Rysowanie Tekstu
     kolor_biel = (255, 255, 255, 255)
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 100)
     wysokosc_linii = rozmiar_fontu + 15
@@ -261,6 +301,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
         y_tekstu_poczatkowy += wysokosc_linii
 
+    # Stopka
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
     
@@ -269,6 +310,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
+
 
 # ==========================================
 # INTERFEJS STREAMLIT
@@ -283,6 +325,7 @@ pobierz_nowoczesne_czcionki()
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 
+# Przygotowanie listy logotypów
 OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
@@ -299,6 +342,7 @@ if dostepne_loga:
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
+# Formularz UI
 with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     url_input = st.text_input("🔗 Link do artykułu:")
@@ -307,11 +351,13 @@ with st.container():
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 
+                # Przypisanie loga
                 if wybrane_logo == OPCJA_BEZ_LOGA:
                     sciezka_do_logo = None
                 else:
                     sciezka_do_logo = os.path.join("logotypy", wybrane_logo)
                 
+                # Detekcja marki Audio dla inteligentnych szablonów
                 is_audio_brand = False
                 if wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower():
                     is_audio_brand = True
@@ -319,6 +365,7 @@ with st.container():
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
+                    # Uruchomienie obu generatorów
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
@@ -326,25 +373,26 @@ with st.container():
                     
                     col1, col2 = st.columns(2)
                     
+                    # Kolumna 1: Magazyn
                     with col1:
                         st.image("magazyn.jpg", caption="Styl Magazyn", use_column_width=True)
                         with open("magazyn.jpg", "rb") as file:
-                            # Nasłuchujemy kliknięcia
                             pobrano_magazyn = st.download_button(label="📥 Pobierz Magazyn", data=file, file_name="fb_magazyn.jpg", mime="image/jpeg", use_container_width=True)
                             if pobrano_magazyn:
-                                aktualizuj_licznik("Magazyn")
+                                aktualizuj_licznik("Magazyn", wybrane_logo)
                             
+                    # Kolumna 2: Split Screen
                     with col2:
                         st.image("split.jpg", caption="Styl Split Screen", use_column_width=True)
                         with open("split.jpg", "rb") as file:
-                            # Nasłuchujemy kliknięcia
                             pobrano_split = st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
                             if pobrano_split:
-                                aktualizuj_licznik("Split Screen")
+                                aktualizuj_licznik("Split Screen", wybrane_logo)
                     
+                    # Sprzątanie po wygenerowaniu
                     if os.path.exists(zdjecie_tmp):
                         os.remove(zdjecie_tmp)
                 else:
-                    st.error("Wystąpił błąd podczas pobierania danych. Serwer odrzucił połączenie lub artykuł nie ma zdjęcia głównego.")
+                    st.error("Wystąpił błąd podczas pobierania danych. Serwer odrzucił połączenie lub artykuł nie ma głównego zdjęcia.")
         else:
             st.warning("Wpisz link przed kliknięciem przycisku!")
