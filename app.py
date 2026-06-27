@@ -39,6 +39,7 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         print(f"✅ [SUKCES] Zapisano do Arkuszy Google: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: Sprawdź konfigurację Secrets. Szczegóły: {e}")
+
 # ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
@@ -154,7 +155,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
-            # Dla audio: Fit & Pad (Zmieść całe i próbkuj tło)
             wspolczynnik = min(szerokosc / img.width, wysokosc / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
@@ -168,7 +168,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
             tlo.paste(img_resized, (offset_x, offset_y))
             img = tlo
         else:
-            # Dla wnętrz: Kadrowanie wypełniające (Cover)
             prop_docelowa = szerokosc / wysokosc
             prop_zdjecia = img.width / img.height
             if prop_zdjecia > prop_docelowa:
@@ -185,7 +184,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         img = enhancer_sharp.enhance(1.2)
         canvas.paste(img, (0, 0))
 
-    # Płynny gradient
     gradient = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
     draw_grad = ImageDraw.Draw(gradient)
     start_grad = int(wysokosc * 0.25) 
@@ -197,7 +195,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas = Image.alpha_composite(canvas, gradient)
     draw = ImageDraw.Draw(canvas)
 
-    # Logo
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
@@ -209,7 +206,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 24)
     except Exception: return
 
-    # Rysowanie Tekstu
     kolor_biel = (255, 255, 255, 255)
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
@@ -220,14 +216,12 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
         y_tekstu_poczatkowy += wysokosc_linii
 
-    # Stopka
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
     draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
-
 
 # ==========================================
 # GENERATOR 2: SPLIT SCREEN
@@ -243,7 +237,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
-            # Dla audio: Fit & Pad (Zmieść całe i próbkuj tło)
             wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
@@ -255,7 +248,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
             tlo.paste(img_resized, (offset_x, offset_y))
             img = tlo
         else:
-            # Dla wnętrz: Kadrowanie wypełniające (Cover)
             prop_docelowa = szerokosc / wys_zdjecia
             prop_zdjecia = img.width / img.height
             if prop_zdjecia > prop_docelowa:
@@ -274,11 +266,9 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     draw = ImageDraw.Draw(canvas)
 
-    # Stylistyka Audio: Czerwony akcent
     if is_audio:
         draw.rectangle([0, wys_zdjecia, szerokosc, wys_zdjecia + 4], fill=(215, 40, 40, 255))
 
-    # Logo
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
@@ -290,7 +280,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 22)
     except Exception: return
 
-    # Rysowanie Tekstu
     kolor_biel = (255, 255, 255, 255)
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 100)
     wysokosc_linii = rozmiar_fontu + 15
@@ -301,7 +290,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
         y_tekstu_poczatkowy += wysokosc_linii
 
-    # Stopka
     tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
     szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
     
@@ -310,7 +298,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
-
 
 # ==========================================
 # INTERFEJS STREAMLIT
@@ -375,19 +362,31 @@ with st.container():
                     
                     # Kolumna 1: Magazyn
                     with col1:
-                        st.image("magazyn.jpg", caption="Styl Magazyn", use_container_width=True)
+                        st.image("magazyn.jpg", caption="Styl Magazyn")
                         with open("magazyn.jpg", "rb") as file:
-                            pobrano_magazyn = st.download_button(label="📥 Pobierz Magazyn", data=file, file_name="fb_magazyn.jpg", mime="image/jpeg", use_container_width=True)
-                            if pobrano_magazyn:
-                                aktualizuj_licznik("Magazyn", wybrane_logo)
+                            st.download_button(
+                                label="📥 Pobierz Magazyn", 
+                                data=file, 
+                                file_name="fb_magazyn.jpg", 
+                                mime="image/jpeg", 
+                                width="stretch",
+                                on_click=aktualizuj_licznik,
+                                args=("Magazyn", wybrane_logo)
+                            )
                             
                     # Kolumna 2: Split Screen
                     with col2:
-                        st.image("split.jpg", caption="Styl Split Screen", use_container_width=True)
+                        st.image("split.jpg", caption="Styl Split Screen")
                         with open("split.jpg", "rb") as file:
-                            pobrano_split = st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
-                            if pobrano_split:
-                                aktualizuj_licznik("Split Screen", wybrane_logo)
+                            st.download_button(
+                                label="📥 Pobierz Split Screen", 
+                                data=file, 
+                                file_name="fb_split.jpg", 
+                                mime="image/jpeg", 
+                                width="stretch",
+                                on_click=aktualizuj_licznik,
+                                args=("Split Screen", wybrane_logo)
+                            )
                     
                     # Sprzątanie po wygenerowaniu
                     if os.path.exists(zdjecie_tmp):
