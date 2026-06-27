@@ -15,7 +15,7 @@ import gspread
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
+# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
@@ -129,7 +129,7 @@ def zawin_tekst(tekst, font, max_szerokosc):
     return linie
 
 # ==========================================
-# GENERATOR 1: MAGAZYN
+# GENERATOR 1: MAGAZYN (Zawsze pełne pokrycie - Cover)
 # ==========================================
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
@@ -138,29 +138,18 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
-        if is_audio:
-            wspolczynnik = min(szerokosc / img.width, wysokosc / img.height)
-            nowa_szer = int(img.width * wspolczynnik)
-            nowa_wys = int(img.height * wspolczynnik)
-            img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
-            kolor_probki = img.getpixel((0, 0))
-            tlo = Image.new("RGBA", (szerokosc, wysokosc), kolor_probki)
-            offset_x = (szerokosc - nowa_szer) // 2
-            offset_y = (wysokosc - nowa_wys) // 2
-            tlo.paste(img_resized, (offset_x, offset_y))
-            img = tlo
+        # ZAWSZE stosujemy "Cover" (wypełnij kadr w 100%) dla stylu Magazyn
+        prop_docelowa = szerokosc / wysokosc
+        prop_zdjecia = img.width / img.height
+        if prop_zdjecia > prop_docelowa:
+            nowa_szer = int(prop_docelowa * img.height)
+            margines = (img.width - nowa_szer) // 2
+            img = img.crop((margines, 0, margines + nowa_szer, img.height))
         else:
-            prop_docelowa = szerokosc / wysokosc
-            prop_zdjecia = img.width / img.height
-            if prop_zdjecia > prop_docelowa:
-                nowa_szer = int(prop_docelowa * img.height)
-                margines = (img.width - nowa_szer) // 2
-                img = img.crop((margines, 0, margines + nowa_szer, img.height))
-            else:
-                nowa_wys = int(img.width / prop_docelowa)
-                margines = (img.height - nowa_wys) // 2
-                img = img.crop((0, margines, img.width, margines + nowa_wys))
-            img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
+            nowa_wys = int(img.width / prop_docelowa)
+            margines = (img.height - nowa_wys) // 2
+            img = img.crop((0, margines, img.width, margines + nowa_wys))
+        img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
             
         enhancer_sharp = ImageEnhance.Sharpness(img)
         img = enhancer_sharp.enhance(1.2)
@@ -206,7 +195,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas.save(nazwa_wyjsciowa, quality=100)
 
 # ==========================================
-# GENERATOR 2: SPLIT SCREEN
+# GENERATOR 2: SPLIT SCREEN (Tutaj zachowujemy Fit & Pad dla Audio)
 # ==========================================
 def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
@@ -219,6 +208,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
+            # Fit & Pad dla sprzętu w Split Screen
             wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
@@ -281,7 +271,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
-
 # ==========================================
 # INTERFEJS STREAMLIT 
 # ==========================================
@@ -295,7 +284,6 @@ pobierz_nowoczesne_czcionki()
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 
-# Przygotowanie listy logotypów
 OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
@@ -312,7 +300,6 @@ if dostepne_loga:
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
-# Zmienne sesji do przechowywania postępu i obrazów
 if 'wygenerowano' not in st.session_state:
     st.session_state.wygenerowano = False
 
@@ -320,7 +307,7 @@ with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    # KROK 1: POBIERZ I OD RAZU WYGENERUJ (Domyślny stan)
+    # KROK 1: POBIERZ I OD RAZU WYGENERUJ
     if st.button("🚀 Pobierz i Generuj Grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane ze strony i renderuję domyślne grafiki..."):
@@ -330,14 +317,12 @@ with st.container():
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
-                    # Zapisujemy parametry bazowe do pamieci, zeby pozniej moc je edytowac
                     st.session_state.sciezka_zdjecia_tmp = zdjecie_tmp
                     st.session_state.aktualny_tytul = tytul
                     st.session_state.sciezka_do_logo = sciezka_do_logo
                     st.session_state.is_audio_brand = is_audio_brand
                     st.session_state.logo_nazwa = wybrane_logo
                     
-                    # Generowanie za pierwszym zamachem
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
@@ -357,7 +342,6 @@ if st.session_state.get('wygenerowano', False):
     bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
     st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
     
-    # 1. Wyświetlamy efekty
     col1, col2 = st.columns(2)
     with col1:
         st.image(st.session_state.magazyn_bytes, caption="Styl Magazyn")
@@ -386,12 +370,10 @@ if st.session_state.get('wygenerowano', False):
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
     
-    # 2. Panel do szybkiej edycji
     nowy_tytul = st.text_input("Edytuj tytuł i wygeneruj ponownie (zdjęcie zostanie to samo):", value=st.session_state.aktualny_tytul)
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
-            # Generujemy jeszcze raz, ale z wpisanym nowym tytułem (i starym zdjęciem zapisanym w pamięci)
             generuj_grafike_magazyn(
                 st.session_state.sciezka_zdjecia_tmp, 
                 st.session_state.sciezka_do_logo, 
@@ -414,8 +396,5 @@ if st.session_state.get('wygenerowano', False):
             with open("split.jpg", "rb") as f:
                 st.session_state.split_bytes = f.read()
             
-            # Podmieniamy zapisany tytuł, by pole tekstowe pamiętało naszą zmianę
             st.session_state.aktualny_tytul = nowy_tytul
-            
-            # Wymuszamy błyskawiczne odświeżenie strony, by pokazać nowe obrazki na górze
             st.rerun()
