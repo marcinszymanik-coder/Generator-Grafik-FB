@@ -15,10 +15,10 @@ import gspread
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
+# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
-    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google w sposób niewidoczny dla użytkownika."""
+    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google w tle."""
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
     teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -28,14 +28,9 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         sh = gc.open("Statystyki_Grafik_FB")
         worksheet = sh.sheet1
         
-        # Dopisujemy nowy wiersz
         worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
-        
-        # Sukces idzie tylko do logów serwera (Ty to widzisz, użytkownik nie)
         print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
-        
     except Exception as e:
-        # Ewentualny błąd idzie również tylko do logów (nie straszymy użytkowników na czerwono)
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
 
 # ==========================================
@@ -289,18 +284,19 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
 
 # ==========================================
-# INTERFEJS STREAMLIT (Z PAMIĘCIĄ SESJI)
+# INTERFEJS STREAMLIT (Dwuetapowy z edycją)
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
 st.title("🎨 Automatyczny Generator Grafik")
-st.write("Wklej link do artykułu, wybierz logo i pobierz gotowe grafiki na Facebooka.")
+st.write("Wklej link, dostosuj nagłówek i pobierz profesjonalne szablony na Facebooka.")
 
 pobierz_nowoczesne_czcionki()
 
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 
+# Przygotowanie listy logotypów
 OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
@@ -317,54 +313,72 @@ if dostepne_loga:
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
-# Inicjalizacja pamięci podręcznej (Session State)
+# Inicjalizacja stanów pamięci (Session State)
+if 'wczytano' not in st.session_state:
+    st.session_state.wczytano = False
 if 'wygenerowano' not in st.session_state:
     st.session_state.wygenerowano = False
 
-# Formularz UI
 with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    if st.button("🚀 Generuj Grafiki", type="primary"):
+    # KROK 1: Przycisk wczytywania danych z portalu
+    if st.button("🔍 Krok 1: Wczytaj dane z artykułu", type="secondary"):
         if url_input:
-            with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
+            with st.spinner("Pobieram zdjęcie i domyślny tytuł..."):
+                tytul_pobrany, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
-                if wybrane_logo == OPCJA_BEZ_LOGA:
-                    sciezka_do_logo = None
+                if tytul_pobrany and zdjecie_tmp:
+                    # Zapisujemy surowe dane do pamięci podręcznej
+                    st.session_state.wczytano = True
+                    st.session_state.wygenerowano = False  # Reset poprzednich grafik
+                    st.session_state.domyslny_tytul = tytul_pobrany
+                    st.session_state.sciezka_zdjecia_tmp = zdjecie_tmp
                 else:
-                    sciezka_do_logo = os.path.join("logotypy", wybrane_logo)
-                
-                is_audio_brand = False
-                if wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower():
-                    is_audio_brand = True
-                
-                tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
-                
-                if tytul and zdjecie_tmp:
-                    generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
-                    generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
-                    
-                    # ZAPIS DO PAMIĘCI APLIKACJI
-                    st.session_state.wygenerowano = True
-                    st.session_state.tytul = tytul
-                    st.session_state.logo = wybrane_logo
-                    
-                    with open("magazyn.jpg", "rb") as f:
-                        st.session_state.magazyn_bytes = f.read()
-                    with open("split.jpg", "rb") as f:
-                        st.session_state.split_bytes = f.read()
-                    
-                    if os.path.exists(zdjecie_tmp):
-                        os.remove(zdjecie_tmp)
-                else:
-                    st.error("Wystąpił błąd podczas pobierania danych. Serwer odrzucił połączenie lub artykuł nie ma głównego zdjęcia.")
+                    st.error("Nie udało się pobrać danych. Sprawdź poprawność linku.")
         else:
-            st.warning("Wpisz link przed kliknięciem przycisku!")
+            st.warning("Najpierw wklej link do artykułu!")
 
-# WYŚWIETLANIE OBRAZKÓW Z PAMIĘCI (Odporne na kliknięcia i odświeżanie)
-if st.session_state.get('wygenerowano', False):
-    st.success(f"Udało się wygenerować szablony dla: {st.session_state.tytul}")
+# KROK 2: Sekcja edycji i generowania (Pojawia się tylko gdy dane są wczytane)
+if st.session_state.wczytano:
+    st.markdown("---")
+    st.subheader("✍️ Krok 2: Dostosuj treść i wygeneruj")
+    
+    # Interaktywne pole tekstowe – tutaj użytkownik modyfikuje tytuł!
+    tytul_do_grafiki = st.text_input(
+        "Edytuj tytuł, który pojawi się na grafice:", 
+        value=st.session_state.domyslny_tytul
+    )
+    
+    if st.button("🚀 Generuj Gotowe Grafiki", type="primary"):
+        with st.spinner("Renderuję szablony graficzne..."):
+            
+            # Przypisanie loga i detekcja marki Audio
+            sciezka_do_logo = None if wybrane_logo == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo)
+            is_audio_brand = bool(wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower())
+            
+            # Generujemy obrazy używając wpisanego przez użytkownika tytułu
+            generuj_grafike_magazyn(st.session_state.sciezka_zdjecia_tmp, sciezka_do_logo, tytul_do_grafiki, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
+            generuj_grafike_split(st.session_state.sciezka_zdjecia_tmp, sciezka_do_logo, tytul_do_grafiki, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
+            
+            # Zapisujemy gotowe bajty obrazów do pamięci sesji (żeby nie znikały przy pobieraniu)
+            st.session_state.wygenerowano = True
+            st.session_state.ostateczny_tytul = tytul_do_grafiki
+            st.session_state.ostateczne_logo = wybrane_logo
+            
+            with open("magazyn.jpg", "rb") as f:
+                st.session_state.magazyn_bytes = f.read()
+            with open("split.jpg", "rb") as f:
+                st.session_state.split_bytes = f.read()
+            
+            # Sprzątamy pobrany plik tymczasowy
+            if os.path.exists(st.session_state.sciezka_zdjecia_tmp):
+                os.remove(st.session_state.sciezka_zdjecia_tmp)
+
+# KROK 3: Wyświetlanie i pobieranie gotowych plików
+if st.session_state.wygenerowano:
+    st.success(f"Udało się wygenerować szablony dla: {st.session_state.ostateczny_tytul}")
     
     col1, col2 = st.columns(2)
     
@@ -377,7 +391,7 @@ if st.session_state.get('wygenerowano', False):
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Magazyn", st.session_state.logo)
+            args=("Magazyn", st.session_state.ostateczne_logo)
         )
             
     with col2:
@@ -389,5 +403,5 @@ if st.session_state.get('wygenerowano', False):
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Split Screen", st.session_state.logo)
+            args=("Split Screen", st.session_state.ostateczne_logo)
         )
