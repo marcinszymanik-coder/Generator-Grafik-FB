@@ -375,7 +375,7 @@ with st.container():
                     
                     # Kolumna 1: Magazyn
                     with col1:
-                        st.image("magazyn.jpg", caption="Styl Magazyn", use_column_width=True)
+                        st.image("magazyn.jpg", caption="Styl Magazyn", use_container_width=True)
                         with open("magazyn.jpg", "rb") as file:
                             pobrano_magazyn = st.download_button(label="📥 Pobierz Magazyn", data=file, file_name="fb_magazyn.jpg", mime="image/jpeg", use_container_width=True)
                             if pobrano_magazyn:
@@ -383,7 +383,7 @@ with st.container():
                             
                     # Kolumna 2: Split Screen
                     with col2:
-                        st.image("split.jpg", caption="Styl Split Screen", use_column_width=True)
+                        st.image("split.jpg", caption="Styl Split Screen", use_container_width=True)
                         with open("split.jpg", "rb") as file:
                             pobrano_split = st.download_button(label="📥 Pobierz Split Screen", data=file, file_name="fb_split.jpg", mime="image/jpeg", use_container_width=True)
                             if pobrano_split:
