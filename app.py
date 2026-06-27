@@ -15,10 +15,9 @@ import gspread
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
+# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
-    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google w tle."""
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
     teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -284,12 +283,12 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
 
 # ==========================================
-# INTERFEJS STREAMLIT (Dwuetapowy z edycją)
+# INTERFEJS STREAMLIT 
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
 st.title("🎨 Automatyczny Generator Grafik")
-st.write("Wklej link, dostosuj nagłówek i pobierz profesjonalne szablony na Facebooka.")
+st.write("Wklej link, zobacz gotowe grafiki, a potem edytuj tekst, jeśli masz na to ochotę!")
 
 pobierz_nowoczesne_czcionki()
 
@@ -313,9 +312,7 @@ if dostepne_loga:
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
-# Inicjalizacja stanów pamięci (Session State)
-if 'wczytano' not in st.session_state:
-    st.session_state.wczytano = False
+# Zmienne sesji do przechowywania postępu i obrazów
 if 'wygenerowano' not in st.session_state:
     st.session_state.wygenerowano = False
 
@@ -323,69 +320,45 @@ with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    # KROK 1: Przycisk wczytywania danych z portalu
-    if st.button("🔍 Krok 1: Wczytaj dane z artykułu", type="secondary"):
+    # KROK 1: POBIERZ I OD RAZU WYGENERUJ (Domyślny stan)
+    if st.button("🚀 Pobierz i Generuj Grafiki", type="primary"):
         if url_input:
-            with st.spinner("Pobieram zdjęcie i domyślny tytuł..."):
-                tytul_pobrany, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
+            with st.spinner("Pobieram dane ze strony i renderuję domyślne grafiki..."):
+                sciezka_do_logo = None if wybrane_logo == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo)
+                is_audio_brand = bool(wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower())
                 
-                if tytul_pobrany and zdjecie_tmp:
-                    # Zapisujemy surowe dane do pamięci podręcznej
-                    st.session_state.wczytano = True
-                    st.session_state.wygenerowano = False  # Reset poprzednich grafik
-                    st.session_state.domyslny_tytul = tytul_pobrany
+                tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
+                
+                if tytul and zdjecie_tmp:
+                    # Zapisujemy parametry bazowe do pamieci, zeby pozniej moc je edytowac
                     st.session_state.sciezka_zdjecia_tmp = zdjecie_tmp
+                    st.session_state.aktualny_tytul = tytul
+                    st.session_state.sciezka_do_logo = sciezka_do_logo
+                    st.session_state.is_audio_brand = is_audio_brand
+                    st.session_state.logo_nazwa = wybrane_logo
+                    
+                    # Generowanie za pierwszym zamachem
+                    generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
+                    generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
+                    
+                    with open("magazyn.jpg", "rb") as f:
+                        st.session_state.magazyn_bytes = f.read()
+                    with open("split.jpg", "rb") as f:
+                        st.session_state.split_bytes = f.read()
+                        
+                    st.session_state.wygenerowano = True
                 else:
-                    st.error("Nie udało się pobrać danych. Sprawdź poprawność linku.")
+                    st.error("Wystąpił błąd podczas pobierania danych. Sprawdź, czy link jest poprawny.")
         else:
-            st.warning("Najpierw wklej link do artykułu!")
+            st.warning("Najpierw wklej link!")
 
-# KROK 2: Sekcja edycji i generowania (Pojawia się tylko gdy dane są wczytane)
-if st.session_state.wczytano:
-    st.markdown("---")
-    st.subheader("✍️ Krok 2: Dostosuj treść i wygeneruj")
+# JEŚLI MAMY WYGENEROWANE GRAFIKI:
+if st.session_state.get('wygenerowano', False):
+    bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
+    st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
     
-    # Interaktywne pole tekstowe – tutaj użytkownik modyfikuje tytuł!
-    tytul_do_grafiki = st.text_input(
-        "Edytuj tytuł, który pojawi się na grafice:", 
-        value=st.session_state.domyslny_tytul
-    )
-    
-    if st.button("🚀 Generuj Gotowe Grafiki", type="primary"):
-        with st.spinner("Renderuję szablony graficzne..."):
-            
-            # Przypisanie loga i detekcja marki Audio
-            sciezka_do_logo = None if wybrane_logo == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo)
-            is_audio_brand = bool(wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower())
-            
-            # Generujemy obrazy używając wpisanego przez użytkownika tytułu
-            generuj_grafike_magazyn(st.session_state.sciezka_zdjecia_tmp, sciezka_do_logo, tytul_do_grafiki, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
-            generuj_grafike_split(st.session_state.sciezka_zdjecia_tmp, sciezka_do_logo, tytul_do_grafiki, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
-            
-            # Zapisujemy gotowe bajty obrazów do pamięci sesji (żeby nie znikały przy pobieraniu)
-            st.session_state.wygenerowano = True
-            st.session_state.ostateczny_tytul = tytul_do_grafiki
-            st.session_state.ostateczne_logo = wybrane_logo
-            
-            with open("magazyn.jpg", "rb") as f:
-                st.session_state.magazyn_bytes = f.read()
-            with open("split.jpg", "rb") as f:
-                st.session_state.split_bytes = f.read()
-            
-            # Sprzątamy pobrany plik tymczasowy
-            if os.path.exists(st.session_state.sciezka_zdjecia_tmp):
-                os.remove(st.session_state.sciezka_zdjecia_tmp)
-
-# KROK 3: Wyświetlanie i pobieranie gotowych plików
-if st.session_state.wygenerowano:
-    # Bezpieczne pobieranie z pamięci (odporne na stare sesje w przeglądarce)
-    bezpieczny_tytul = st.session_state.get('ostateczny_tytul', 'Twojego artykułu')
-    bezpieczne_logo = st.session_state.get('ostateczne_logo', None)
-    
-    st.success(f"Udało się wygenerować szablony dla: {bezpieczny_tytul}")
-    
+    # 1. Wyświetlamy efekty
     col1, col2 = st.columns(2)
-    
     with col1:
         st.image(st.session_state.magazyn_bytes, caption="Styl Magazyn")
         st.download_button(
@@ -395,7 +368,7 @@ if st.session_state.wygenerowano:
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Magazyn", bezpieczne_logo)
+            args=("Magazyn", st.session_state.get('logo_nazwa'))
         )
             
     with col2:
@@ -407,5 +380,42 @@ if st.session_state.wygenerowano:
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Split Screen", bezpieczne_logo)
+            args=("Split Screen", st.session_state.get('logo_nazwa'))
         )
+        
+    st.markdown("---")
+    st.subheader("✍️ Chcesz coś poprawić?")
+    
+    # 2. Panel do szybkiej edycji
+    nowy_tytul = st.text_input("Edytuj tytuł i wygeneruj ponownie (zdjęcie zostanie to samo):", value=st.session_state.aktualny_tytul)
+    
+    if st.button("🔄 Zaktualizuj napisy"):
+        with st.spinner("Odświeżam grafiki..."):
+            # Generujemy jeszcze raz, ale z wpisanym nowym tytułem (i starym zdjęciem zapisanym w pamięci)
+            generuj_grafike_magazyn(
+                st.session_state.sciezka_zdjecia_tmp, 
+                st.session_state.sciezka_do_logo, 
+                nowy_tytul, 
+                "ARTYKUŁ W KOMENTARZU", 
+                "magazyn.jpg", 
+                is_audio=st.session_state.is_audio_brand
+            )
+            generuj_grafike_split(
+                st.session_state.sciezka_zdjecia_tmp, 
+                st.session_state.sciezka_do_logo, 
+                nowy_tytul, 
+                "ARTYKUŁ W KOMENTARZU", 
+                "split.jpg", 
+                is_audio=st.session_state.is_audio_brand
+            )
+            
+            with open("magazyn.jpg", "rb") as f:
+                st.session_state.magazyn_bytes = f.read()
+            with open("split.jpg", "rb") as f:
+                st.session_state.split_bytes = f.read()
+            
+            # Podmieniamy zapisany tytuł, by pole tekstowe pamiętało naszą zmianę
+            st.session_state.aktualny_tytul = nowy_tytul
+            
+            # Wymuszamy błyskawiczne odświeżenie strony, by pokazać nowe obrazki na górze
+            st.rerun()
