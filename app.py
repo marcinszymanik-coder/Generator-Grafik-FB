@@ -15,7 +15,7 @@ import gspread
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
+# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
@@ -113,23 +113,36 @@ def pobierz_nowoczesne_czcionki():
             except Exception: pass
 
 def zawin_tekst(tekst, font, max_szerokosc):
-    slowa = tekst.split()
-    linie = []
-    aktualna_linia = []
-    for slowo in slowa:
-        linia_testowa = " ".join(aktualna_linia + [slowo])
-        szerokosc = font.getlength(linia_testowa) if hasattr(font, 'getlength') else font.getbbox(linia_testowa)[2]
-        if szerokosc <= max_szerokosc:
-            aktualna_linia.append(slowo)
-        else:
-            linie.append(" ".join(aktualna_linia))
-            aktualna_linia = [slowo]
-    if aktualna_linia:
-        linie.append(" ".join(aktualna_linia))
-    return linie
+    """Dzieli długie tytuły na zgrabne linie i szanuje ręczne wciskanie Entera."""
+    linie_ostateczne = []
+    # 1. Najpierw dzielimy tekst po ręcznych Enterach użytkownika
+    akapity = tekst.split('\n')
+    
+    for akapit in akapity:
+        slowa = akapit.split()
+        if not slowa:
+            linie_ostateczne.append("") # Pusta linia, jeśli ktoś wcisnął Enter dwa razy
+            continue
+            
+        aktualna_linia = []
+        for slowo in slowa:
+            linia_testowa = " ".join(aktualna_linia + [slowo])
+            szerokosc = font.getlength(linia_testowa) if hasattr(font, 'getlength') else font.getbbox(linia_testowa)[2]
+            
+            # 2. Automatyczne zawijanie, jeśli linijka jest za długa na grafikę
+            if szerokosc <= max_szerokosc:
+                aktualna_linia.append(slowo)
+            else:
+                linie_ostateczne.append(" ".join(aktualna_linia))
+                aktualna_linia = [slowo]
+        
+        if aktualna_linia:
+            linie_ostateczne.append(" ".join(aktualna_linia))
+            
+    return linie_ostateczne
 
 # ==========================================
-# GENERATOR 1: MAGAZYN (Zawsze pełne pokrycie - Cover)
+# GENERATOR 1: MAGAZYN 
 # ==========================================
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
@@ -138,7 +151,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
-        # ZAWSZE stosujemy "Cover" (wypełnij kadr w 100%) dla stylu Magazyn
         prop_docelowa = szerokosc / wysokosc
         prop_zdjecia = img.width / img.height
         if prop_zdjecia > prop_docelowa:
@@ -178,6 +190,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     except Exception: return
 
     kolor_biel = (255, 255, 255, 255)
+    # Usuwamy wymuszony `.upper()` w przypadku edycji manualnej
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
     y_tekstu_poczatkowy = (wysokosc - 280) - ((len(linie_glowne) * wysokosc_linii) / 2)
@@ -195,7 +208,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     canvas.save(nazwa_wyjsciowa, quality=100)
 
 # ==========================================
-# GENERATOR 2: SPLIT SCREEN (Tutaj zachowujemy Fit & Pad dla Audio)
+# GENERATOR 2: SPLIT SCREEN 
 # ==========================================
 def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
     szerokosc, wysokosc = 1080, 1080
@@ -208,7 +221,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         img = Image.open(sciezka_zdjecia).convert("RGBA")
         
         if is_audio:
-            # Fit & Pad dla sprzętu w Split Screen
             wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
@@ -370,7 +382,12 @@ if st.session_state.get('wygenerowano', False):
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
     
-    nowy_tytul = st.text_input("Edytuj tytuł i wygeneruj ponownie (zdjęcie zostanie to samo):", value=st.session_state.aktualny_tytul)
+    # 2. Panel do szybkiej edycji z wielolinijkowym polem tekstowym (text_area)
+    nowy_tytul = st.text_area(
+        "Edytuj tytuł i wygeneruj ponownie (użyj klawisza Enter, by wymusić przełamanie linii):", 
+        value=st.session_state.aktualny_tytul,
+        height=100
+    )
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
