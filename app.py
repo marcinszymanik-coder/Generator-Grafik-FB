@@ -7,38 +7,38 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import streamlit as st
+import datetime
+import json
+import gspread # Nowa biblioteka do Google Sheets
 
-# Wyłączenie weryfikacji certyfikatów SSL na macOS
+# Wyłączenie weryfikacji certyfikatów SSL
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # ==========================================
-# FUNKCJA ANALITYCZNA (Ukryta)
+# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
-    """Zapisuje ilość pobrań do pliku tekstowego i wysyła precyzyjne info do logów serwera."""
-    plik_licznika = "licznik_pobran.txt"
-    try:
-        if os.path.exists(plik_licznika):
-            with open(plik_licznika, "r") as f:
-                licznik = int(f.read().strip())
-        else:
-            licznik = 0
-    except:
-        licznik = 0
-        
-    licznik += 1
-    
-    # Zabezpieczenie na wypadek wyboru "Bez loga"
+    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google."""
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
+    teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
-        with open(plik_licznika, "w") as f:
-            f.write(str(licznik))
-        # Precyzyjny log dla Ciebie (widoczny w zakładce "Logs" na serwerze):
-        print(f"📈 [STATYSTYKA] Pobrano: Styl = {styl_grafiki} | Logo = {nazwa_marki} | Łącznie pobrań: {licznik}")
+        # Odczytujemy bezpieczne klucze ze Streamlit Secrets
+        creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
+        
+        # Logujemy się jako bot
+        gc = gspread.service_account_from_dict(creds_json)
+        
+        # Otwieramy Twój arkusz
+        sh = gc.open("Statystyki_Grafik_FB")
+        worksheet = sh.sheet1
+        
+        # Dopisujemy nowy wiersz na samym dole tabeli
+        worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
+        
+        print(f"✅ [SUKCES] Zapisano do Arkuszy Google: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
-        print(f"Błąd zapisu statystyk: {e}")
-
+        print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: Sprawdź konfigurację Secrets. Szczegóły: {e}")
 # ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
