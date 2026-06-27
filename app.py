@@ -18,9 +18,12 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google)
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
-    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google."""
+    """Zapisuje dane o pobraniu prosto do Twojego Arkusza Google i daje znać na ekranie."""
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
     teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 1. Wyświetlamy dymek informacyjny na ekranie (Prawy dolny róg)
+    st.toast(f"⏳ Rejestruję pobranie: {styl_grafiki}...", icon="🔄")
     
     try:
         creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
@@ -32,8 +35,15 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
         
         print(f"✅ [SUKCES] Zapisano do Arkuszy Google: {styl_grafiki} | {nazwa_marki}")
+        # 2. Wyświetlamy dymek o sukcesie
+        st.toast("✅ Dodano wpis w Arkuszu Google!", icon="📈")
+        
     except Exception as e:
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
+        # 3. Jeśli coś wybuchnie, wyrzuci wielki czerwony błąd NA ŚRODKU EKRANU APLIKACJI
+        st.error(f"Błąd połączenia z Arkuszem Google: {e}")
+
+# ... (TUTAJ RESZTA TWOJEGO KODU OD 'FUNKCJE BAZOWE' W DÓŁ POZOSTAJE BEZ ZMIAN) ...
 
 # ==========================================
 # FUNKCJE BAZOWE
