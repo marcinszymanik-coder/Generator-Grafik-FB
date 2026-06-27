@@ -378,7 +378,11 @@ if st.session_state.wczytano:
 
 # KROK 3: Wyświetlanie i pobieranie gotowych plików
 if st.session_state.wygenerowano:
-    st.success(f"Udało się wygenerować szablony dla: {st.session_state.ostateczny_tytul}")
+    # Bezpieczne pobieranie z pamięci (odporne na stare sesje w przeglądarce)
+    bezpieczny_tytul = st.session_state.get('ostateczny_tytul', 'Twojego artykułu')
+    bezpieczne_logo = st.session_state.get('ostateczne_logo', None)
+    
+    st.success(f"Udało się wygenerować szablony dla: {bezpieczny_tytul}")
     
     col1, col2 = st.columns(2)
     
@@ -391,7 +395,7 @@ if st.session_state.wygenerowano:
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Magazyn", st.session_state.ostateczne_logo)
+            args=("Magazyn", bezpieczne_logo)
         )
             
     with col2:
@@ -403,5 +407,5 @@ if st.session_state.wygenerowano:
             mime="image/jpeg", 
             width="stretch",
             on_click=aktualizuj_licznik,
-            args=("Split Screen", st.session_state.ostateczne_logo)
+            args=("Split Screen", bezpieczne_logo)
         )
