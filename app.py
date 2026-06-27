@@ -11,6 +11,9 @@ import datetime
 import json
 import gspread 
 
+# NOWOŚĆ: Biblioteka do renderowania emotikon na obrazkach!
+from pilmoji import Pilmoji 
+
 # Wyłączenie weryfikacji certyfikatów SSL
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -113,15 +116,13 @@ def pobierz_nowoczesne_czcionki():
             except Exception: pass
 
 def zawin_tekst(tekst, font, max_szerokosc):
-    """Dzieli długie tytuły na zgrabne linie i szanuje ręczne wciskanie Entera."""
     linie_ostateczne = []
-    # 1. Najpierw dzielimy tekst po ręcznych Enterach użytkownika
     akapity = tekst.split('\n')
     
     for akapit in akapity:
         slowa = akapit.split()
         if not slowa:
-            linie_ostateczne.append("") # Pusta linia, jeśli ktoś wcisnął Enter dwa razy
+            linie_ostateczne.append("") 
             continue
             
         aktualna_linia = []
@@ -129,7 +130,6 @@ def zawin_tekst(tekst, font, max_szerokosc):
             linia_testowa = " ".join(aktualna_linia + [slowo])
             szerokosc = font.getlength(linia_testowa) if hasattr(font, 'getlength') else font.getbbox(linia_testowa)[2]
             
-            # 2. Automatyczne zawijanie, jeśli linijka jest za długa na grafikę
             if szerokosc <= max_szerokosc:
                 aktualna_linia.append(slowo)
             else:
@@ -176,8 +176,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         alpha = int(max_alpha * ((y - start_grad) / (wysokosc - start_grad)))
         draw_grad.line([(0, y), (szerokosc, y)], fill=(0, 0, 0, alpha))
     canvas = Image.alpha_composite(canvas, gradient)
-    draw = ImageDraw.Draw(canvas)
-
+    
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
@@ -190,19 +189,20 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     except Exception: return
 
     kolor_biel = (255, 255, 255, 255)
-    # Usuwamy wymuszony `.upper()` w przypadku edycji manualnej
     linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
     y_tekstu_poczatkowy = (wysokosc - 280) - ((len(linie_glowne) * wysokosc_linii) / 2)
 
-    for linia in linie_glowne:
-        szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
-        draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
-        y_tekstu_poczatkowy += wysokosc_linii
+    # NOWOŚĆ: Używamy Pilmoji zamiast standardowego draw, aby obsłużyć emoji
+    with Pilmoji(canvas) as pilmoji:
+        for linia in linie_glowne:
+            szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
+            pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
+            y_tekstu_poczatkowy += wysokosc_linii
 
-    tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
-    szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-    draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
+        tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
+        szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
+        pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
@@ -269,16 +269,18 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     wysokosc_linii = rozmiar_fontu + 15
     y_tekstu_poczatkowy = (wys_zdjecia + ((wysokosc - wys_zdjecia) / 2)) - ((len(linie_glowne) * wysokosc_linii) / 2) - 20 
 
-    for linia in linie_glowne:
-        szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
-        draw.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
-        y_tekstu_poczatkowy += wysokosc_linii
+    # NOWOŚĆ: Używamy Pilmoji zamiast standardowego draw, aby obsłużyć emoji
+    with Pilmoji(canvas) as pilmoji:
+        for linia in linie_glowne:
+            szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
+            pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
+            y_tekstu_poczatkowy += wysokosc_linii
 
-    tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
-    szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-    
-    kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
-    draw.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka) 
+        tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
+        szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
+        
+        kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
+        pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka) 
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
@@ -289,7 +291,7 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
 st.title("🎨 Automatyczny Generator Grafik")
-st.write("Wklej link, zobacz gotowe grafiki, a potem edytuj tekst, jeśli masz na to ochotę!")
+st.write("Wklej link, zobacz gotowe grafiki, a potem edytuj tekst, dodawaj emotikony 🔥 i pobieraj!")
 
 pobierz_nowoczesne_czcionki()
 
@@ -319,7 +321,6 @@ with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
     url_input = st.text_input("🔗 Link do artykułu:")
     
-    # KROK 1: POBIERZ I OD RAZU WYGENERUJ
     if st.button("🚀 Pobierz i Generuj Grafiki", type="primary"):
         if url_input:
             with st.spinner("Pobieram dane ze strony i renderuję domyślne grafiki..."):
@@ -349,7 +350,6 @@ with st.container():
         else:
             st.warning("Najpierw wklej link!")
 
-# JEŚLI MAMY WYGENEROWANE GRAFIKI:
 if st.session_state.get('wygenerowano', False):
     bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
     st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
@@ -382,12 +382,7 @@ if st.session_state.get('wygenerowano', False):
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
     
-    # 2. Panel do szybkiej edycji z wielolinijkowym polem tekstowym (text_area)
-    nowy_tytul = st.text_area(
-        "Edytuj tytuł i wygeneruj ponownie (użyj klawisza Enter, by wymusić przełamanie linii):", 
-        value=st.session_state.aktualny_tytul,
-        height=100
-    )
+    nowy_tytul = st.text_area("Edytuj tytuł i wygeneruj ponownie (użyj klawisza Enter, by wymusić przełamanie linii):", value=st.session_state.aktualny_tytul, height=100)
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
