@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import streamlit as st
 import datetime
 import json
-import gspread # Nowa biblioteka do Google Sheets
+import gspread 
 
 # Wyłączenie weryfikacji certyfikatów SSL
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -23,13 +23,8 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
     teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
-        # Odczytujemy bezpieczne klucze ze Streamlit Secrets
         creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
-        
-        # Logujemy się jako bot
         gc = gspread.service_account_from_dict(creds_json)
-        
-        # Otwieramy Twój arkusz
         sh = gc.open("Statystyki_Grafik_FB")
         worksheet = sh.sheet1
         
@@ -38,13 +33,12 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         
         print(f"✅ [SUKCES] Zapisano do Arkuszy Google: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
-        print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: Sprawdź konfigurację Secrets. Szczegóły: {e}")
+        print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
 
 # ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
 def wyczysc_tytul_portalu(tytul_surowy):
-    """Usuwa dopiski portali z końca tytułu, chroniąc treść."""
     smieci = [
         "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
         "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze",
@@ -57,7 +51,6 @@ def wyczysc_tytul_portalu(tytul_surowy):
     return tytul_czysty.strip("- – |").strip()
 
 def pobierz_dane_z_artykulu(url):
-    """Pobiera tytuł i zdjęcie, uniwersalnie dla wszystkich portali."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -67,7 +60,6 @@ def pobierz_dane_z_artykulu(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Tytuł
         tytul = "BRAK TYTUŁU"
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
@@ -76,7 +68,6 @@ def pobierz_dane_z_artykulu(url):
             if soup.title:
                 tytul = wyczysc_tytul_portalu(soup.title.string)
 
-        # Zdjęcie
         img_url = None
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
@@ -92,7 +83,6 @@ def pobierz_dane_z_artykulu(url):
             src = tag.get('src')
             if src: linki_zdjec.append(src) 
 
-        # Specjalna detekcja oryginalnych zdjęć w wysokiej rozdzielczości (np. format 1050x0)
         najlepszy_strzal = None
         for link in linki_zdjec:
             if "/i/" in link and "1050x0" in link:
@@ -113,11 +103,9 @@ def pobierz_dane_z_artykulu(url):
         
         return tytul, nazwa_zdjecia
     except Exception as e:
-        print(f"Błąd pobierania danych: {e}")
         return None, None
 
 def pobierz_nowoczesne_czcionki():
-    """Pobiera Montserrat, jeśli nie ma go na serwerze."""
     czcionki = {
         "Montserrat-Bold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Bold.ttf",
         "Montserrat-SemiBold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBold.ttf"
@@ -128,7 +116,6 @@ def pobierz_nowoczesne_czcionki():
             except Exception: pass
 
 def zawin_tekst(tekst, font, max_szerokosc):
-    """Dzieli długie tytuły na zgrabne linie."""
     slowa = tekst.split()
     linie = []
     aktualna_linia = []
@@ -159,10 +146,8 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
             nowa_szer = int(img.width * wspolczynnik)
             nowa_wys = int(img.height * wspolczynnik)
             img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
-            
             kolor_probki = img.getpixel((0, 0))
             tlo = Image.new("RGBA", (szerokosc, wysokosc), kolor_probki)
-            
             offset_x = (szerokosc - nowa_szer) // 2
             offset_y = (wysokosc - nowa_wys) // 2
             tlo.paste(img_resized, (offset_x, offset_y))
@@ -299,8 +284,9 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
+
 # ==========================================
-# INTERFEJS STREAMLIT
+# INTERFEJS STREAMLIT (Z PAMIĘCIĄ SESJI)
 # ==========================================
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
@@ -312,7 +298,6 @@ pobierz_nowoczesne_czcionki()
 if not os.path.exists("logotypy"):
     os.makedirs("logotypy")
 
-# Przygotowanie listy logotypów
 OPCJA_BEZ_LOGA = "❌ Bez loga"
 dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
 
@@ -329,6 +314,10 @@ if dostepne_loga:
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
+# Inicjalizacja pamięci podręcznej (Session State)
+if 'wygenerowano' not in st.session_state:
+    st.session_state.wygenerowano = False
+
 # Formularz UI
 with st.container():
     wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
@@ -338,13 +327,11 @@ with st.container():
         if url_input:
             with st.spinner("Pobieram dane i dopasowuję szablon graficzny..."):
                 
-                # Przypisanie loga
                 if wybrane_logo == OPCJA_BEZ_LOGA:
                     sciezka_do_logo = None
                 else:
                     sciezka_do_logo = os.path.join("logotypy", wybrane_logo)
                 
-                # Detekcja marki Audio dla inteligentnych szablonów
                 is_audio_brand = False
                 if wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower():
                     is_audio_brand = True
@@ -352,46 +339,52 @@ with st.container():
                 tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
                 
                 if tytul and zdjecie_tmp:
-                    # Uruchomienie obu generatorów
                     generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
                     generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
                     
-                    st.success(f"Udało się wygenerować szablony dla: {tytul}")
+                    # ZAPIS DO PAMIĘCI APLIKACJI
+                    st.session_state.wygenerowano = True
+                    st.session_state.tytul = tytul
+                    st.session_state.logo = wybrane_logo
                     
-                    col1, col2 = st.columns(2)
+                    with open("magazyn.jpg", "rb") as f:
+                        st.session_state.magazyn_bytes = f.read()
+                    with open("split.jpg", "rb") as f:
+                        st.session_state.split_bytes = f.read()
                     
-                    # Kolumna 1: Magazyn
-                    with col1:
-                        st.image("magazyn.jpg", caption="Styl Magazyn")
-                        with open("magazyn.jpg", "rb") as file:
-                            st.download_button(
-                                label="📥 Pobierz Magazyn", 
-                                data=file, 
-                                file_name="fb_magazyn.jpg", 
-                                mime="image/jpeg", 
-                                width="stretch",
-                                on_click=aktualizuj_licznik,
-                                args=("Magazyn", wybrane_logo)
-                            )
-                            
-                    # Kolumna 2: Split Screen
-                    with col2:
-                        st.image("split.jpg", caption="Styl Split Screen")
-                        with open("split.jpg", "rb") as file:
-                            st.download_button(
-                                label="📥 Pobierz Split Screen", 
-                                data=file, 
-                                file_name="fb_split.jpg", 
-                                mime="image/jpeg", 
-                                width="stretch",
-                                on_click=aktualizuj_licznik,
-                                args=("Split Screen", wybrane_logo)
-                            )
-                    
-                    # Sprzątanie po wygenerowaniu
                     if os.path.exists(zdjecie_tmp):
                         os.remove(zdjecie_tmp)
                 else:
                     st.error("Wystąpił błąd podczas pobierania danych. Serwer odrzucił połączenie lub artykuł nie ma głównego zdjęcia.")
         else:
             st.warning("Wpisz link przed kliknięciem przycisku!")
+
+# WYŚWIETLANIE OBRAZKÓW Z PAMIĘCI (Odporne na kliknięcia i odświeżanie)
+if st.session_state.get('wygenerowano', False):
+    st.success(f"Udało się wygenerować szablony dla: {st.session_state.tytul}")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.image(st.session_state.magazyn_bytes, caption="Styl Magazyn")
+        st.download_button(
+            label="📥 Pobierz Magazyn", 
+            data=st.session_state.magazyn_bytes, 
+            file_name="fb_magazyn.jpg", 
+            mime="image/jpeg", 
+            width="stretch",
+            on_click=aktualizuj_licznik,
+            args=("Magazyn", st.session_state.logo)
+        )
+            
+    with col2:
+        st.image(st.session_state.split_bytes, caption="Styl Split Screen")
+        st.download_button(
+            label="📥 Pobierz Split Screen", 
+            data=st.session_state.split_bytes, 
+            file_name="fb_split.jpg", 
+            mime="image/jpeg", 
+            width="stretch",
+            on_click=aktualizuj_licznik,
+            args=("Split Screen", st.session_state.logo)
+        )
