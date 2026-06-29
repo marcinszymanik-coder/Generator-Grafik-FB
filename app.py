@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import streamlit as st
 import datetime
+from zoneinfo import ZoneInfo  # NOWY IMPORT
 import json
 import gspread 
 
@@ -22,7 +23,9 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # ==========================================
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
-    teraz = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Pobieramy czas z uwzględnieniem polskiej strefy czasowej (letni/zimowy)
+    teraz = datetime.datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
@@ -34,7 +37,6 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
-
 # ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
