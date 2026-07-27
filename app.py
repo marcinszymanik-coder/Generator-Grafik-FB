@@ -18,6 +18,9 @@ from pilmoji import Pilmoji
 # Wyłączenie weryfikacji certyfikatów SSL
 ssl._create_default_https_context = ssl._create_unverified_context
 
+# Domyślny tekst stopki (wersje "bez komentarza" dostają pusty string)
+STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
+
 # ==========================================
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
 # ==========================================
@@ -202,9 +205,11 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
-        szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-        pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
+        # Stopkę rysujemy tylko wtedy, gdy tekst został podany (wersja "bez komentarza" go nie ma)
+        if tekst_stopki:
+            tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
+            szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
+            pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
@@ -278,14 +283,45 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        tekst_stopki_rozstrzelony = "   ".join(tekst_stopki) 
-        szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-        
-        kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
-        pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka) 
+        # Stopkę rysujemy tylko wtedy, gdy tekst został podany (wersja "bez komentarza" go nie ma)
+        if tekst_stopki:
+            tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
+            szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
+
+            kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
+            pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
+
+# ==========================================
+# GENEROWANIE WSZYSTKICH WARIANTÓW
+# ==========================================
+# Każdy wariant: klucz -> (plik roboczy, funkcja generująca, tekst stopki)
+WARIANTY = {
+    "magazyn":     ("magazyn.jpg",     "magazyn", STOPKA_DOMYSLNA),
+    "split":       ("split.jpg",       "split",   STOPKA_DOMYSLNA),
+    "magazyn_bez": ("magazyn_bez.jpg", "magazyn", ""),
+    "split_bez":   ("split_bez.jpg",   "split",   ""),
+}
+
+# Karty interfejsu: klucz -> (podpis, etykieta przycisku, nazwa pliku do pobrania, nazwa w statystykach)
+KARTY = {
+    "magazyn":     ("Styl Magazyn",                        "📥 Pobierz Magazyn",                  "fb_magazyn.jpg",                 "Magazyn"),
+    "split":       ("Styl Split Screen",                   "📥 Pobierz Split Screen",             "fb_split.jpg",                   "Split Screen"),
+    "magazyn_bez": ("Styl Magazyn – bez komentarza",       "📥 Pobierz Magazyn (bez kom.)",       "fb_magazyn_bez_komentarza.jpg",  "Magazyn - bez komentarza"),
+    "split_bez":   ("Styl Split Screen – bez komentarza",  "📥 Pobierz Split Screen (bez kom.)",  "fb_split_bez_komentarza.jpg",    "Split Screen - bez komentarza"),
+}
+
+def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio):
+    """Renderuje wszystkie 4 warianty i zwraca słownik {klucz: bajty pliku}."""
+    gotowe = {}
+    for klucz, (plik_roboczy, styl, stopka) in WARIANTY.items():
+        generator = generuj_grafike_magazyn if styl == "magazyn" else generuj_grafike_split
+        generator(sciezka_zdjecia, sciezka_do_logo, tytul, stopka, plik_roboczy, is_audio=is_audio)
+        with open(plik_roboczy, "rb") as f:
+            gotowe[klucz] = f.read()
+    return gotowe
 
 # ==========================================
 # INTERFEJS STREAMLIT 
@@ -338,14 +374,9 @@ with st.container():
                     st.session_state.is_audio_brand = is_audio_brand
                     st.session_state.logo_nazwa = wybrane_logo
                     
-                    generuj_grafike_magazyn(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "magazyn.jpg", is_audio=is_audio_brand)
-                    generuj_grafike_split(zdjecie_tmp, sciezka_do_logo, tytul, "ARTYKUŁ W KOMENTARZU", "split.jpg", is_audio=is_audio_brand)
-                    
-                    with open("magazyn.jpg", "rb") as f:
-                        st.session_state.magazyn_bytes = f.read()
-                    with open("split.jpg", "rb") as f:
-                        st.session_state.split_bytes = f.read()
-                        
+                    st.session_state.grafiki = wygeneruj_grafiki(
+                        zdjecie_tmp, sciezka_do_logo, tytul, is_audio_brand
+                    )
                     st.session_state.wygenerowano = True
                 else:
                     st.error("Wystąpił błąd podczas pobierania danych. Sprawdź, czy link jest poprawny.")
@@ -356,31 +387,29 @@ if st.session_state.get('wygenerowano', False):
     bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
     st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.image(st.session_state.magazyn_bytes, caption="Styl Magazyn")
-        st.download_button(
-            label="📥 Pobierz Magazyn", 
-            data=st.session_state.magazyn_bytes, 
-            file_name="fb_magazyn.jpg", 
-            mime="image/jpeg", 
-            width="stretch",
-            on_click=aktualizuj_licznik,
-            args=("Magazyn", st.session_state.get('logo_nazwa'))
-        )
-            
-    with col2:
-        st.image(st.session_state.split_bytes, caption="Styl Split Screen")
-        st.download_button(
-            label="📥 Pobierz Split Screen", 
-            data=st.session_state.split_bytes, 
-            file_name="fb_split.jpg", 
-            mime="image/jpeg", 
-            width="stretch",
-            on_click=aktualizuj_licznik,
-            args=("Split Screen", st.session_state.get('logo_nazwa'))
-        )
-        
+    def pokaz_pare(klucze):
+        kolumny = st.columns(2)
+        for kolumna, klucz in zip(kolumny, klucze):
+            podpis, etykieta, nazwa_pliku, nazwa_statystyki = KARTY[klucz]
+            with kolumna:
+                st.image(st.session_state.grafiki[klucz], caption=podpis)
+                st.download_button(
+                    label=etykieta,
+                    data=st.session_state.grafiki[klucz],
+                    file_name=nazwa_pliku,
+                    mime="image/jpeg",
+                    width="stretch",
+                    key=f"pobierz_{klucz}",
+                    on_click=aktualizuj_licznik,
+                    args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
+                )
+
+    pokaz_pare(["magazyn", "split"])
+
+    st.markdown("---")
+    st.subheader("🚫 Wersje bez napisu „ARTYKUŁ W KOMENTARZU”")
+    pokaz_pare(["magazyn_bez", "split_bez"])
+
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
     
@@ -388,27 +417,11 @@ if st.session_state.get('wygenerowano', False):
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
-            generuj_grafike_magazyn(
-                st.session_state.sciezka_zdjecia_tmp, 
-                st.session_state.sciezka_do_logo, 
-                nowy_tytul, 
-                "ARTYKUŁ W KOMENTARZU", 
-                "magazyn.jpg", 
-                is_audio=st.session_state.is_audio_brand
+            st.session_state.grafiki = wygeneruj_grafiki(
+                st.session_state.sciezka_zdjecia_tmp,
+                st.session_state.sciezka_do_logo,
+                nowy_tytul,
+                st.session_state.is_audio_brand
             )
-            generuj_grafike_split(
-                st.session_state.sciezka_zdjecia_tmp, 
-                st.session_state.sciezka_do_logo, 
-                nowy_tytul, 
-                "ARTYKUŁ W KOMENTARZU", 
-                "split.jpg", 
-                is_audio=st.session_state.is_audio_brand
-            )
-            
-            with open("magazyn.jpg", "rb") as f:
-                st.session_state.magazyn_bytes = f.read()
-            with open("split.jpg", "rb") as f:
-                st.session_state.split_bytes = f.read()
-            
             st.session_state.aktualny_tytul = nowy_tytul
             st.rerun()
