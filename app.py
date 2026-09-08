@@ -361,6 +361,8 @@ WARIANTY = {
     "split_bez":     ("split_bez.jpg",     "split",   "",              False),
     "magazyn_kolor": ("magazyn_kolor.jpg", "magazyn", STOPKA_DOMYSLNA, True),
     "split_kolor":   ("split_kolor.jpg",   "split",   STOPKA_DOMYSLNA, True),
+    "magazyn_kolor_bez": ("magazyn_kolor_bez.jpg", "magazyn", "", True),
+    "split_kolor_bez":   ("split_kolor_bez.jpg",   "split",   "", True),
 }
 
 # Karty interfejsu: klucz -> (podpis, etykieta przycisku, nazwa pliku do pobrania, nazwa w statystykach)
@@ -371,6 +373,8 @@ KARTY = {
     "split_bez":   ("Styl Split Screen – bez komentarza",  "📥 Pobierz Split Screen (bez kom.)",  "fb_split_bez_komentarza.jpg",    "Split Screen - bez komentarza"),
     "magazyn_kolor": ("Magazyn – kolor ze zdjęcia",        "📥 Pobierz Magazyn (kolor)",          "fb_magazyn_kolor.jpg",           "Magazyn - kolor dominujący"),
     "split_kolor":   ("Split Screen – kolor ze zdjęcia",   "📥 Pobierz Split Screen (kolor)",     "fb_split_kolor.jpg",             "Split Screen - kolor dominujący"),
+    "magazyn_kolor_bez": ("Magazyn – kolor ze zdjęcia",      "📥 Pobierz Magazyn (kolor, bez kom.)",      "fb_magazyn_kolor_bez_komentarza.jpg", "Magazyn - kolor dominujący - bez komentarza"),
+    "split_kolor_bez":   ("Split Screen – kolor ze zdjęcia", "📥 Pobierz Split Screen (kolor, bez kom.)", "fb_split_kolor_bez_komentarza.jpg",   "Split Screen - kolor dominujący - bez komentarza"),
 }
 
 def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio):
@@ -468,16 +472,22 @@ if st.session_state.get('wygenerowano', False):
                     args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
                 )
 
-    pokaz_pare(["magazyn", "split"])
+    # Przełącznik zamiast osobnych sekcji - te same 4 kafelki, tylko ze stopką albo bez.
+    # Wszystkie warianty są już wyrenderowane, więc przełączanie jest natychmiastowe.
+    z_komentarzem = st.toggle(
+        "Napis „ARTYKUŁ W KOMENTARZU”",
+        value=True,
+        help="Wyłącz, żeby te same 4 grafiki pokazały się w wersji bez stopki."
+    )
+    sufiks = "" if z_komentarzem else "_bez"
+
+    st.subheader("🎨 Kolor ze zdjęcia")
+    st.caption("Podlewka w przyciemnionym kolorze dominującym zdjęcia. Przy zdjęciach czarno-białych lub bezbarwnych wariant wyjdzie identycznie jak klasyczny.")
+    pokaz_pare([f"magazyn_kolor{sufiks}", f"split_kolor{sufiks}"])
 
     st.markdown("---")
-    st.subheader("🚫 Wersje bez napisu „ARTYKUŁ W KOMENTARZU”")
-    pokaz_pare(["magazyn_bez", "split_bez"])
-
-    st.markdown("---")
-    st.subheader("🎨 Wersje z kolorem dominującym ze zdjęcia")
-    st.caption("Zamiast czarnej podlewki – przyciemniony kolor wyciągnięty ze zdjęcia. Jeśli zdjęcie jest szare lub czarno-białe, wariant wyjdzie identycznie jak klasyczny.")
-    pokaz_pare(["magazyn_kolor", "split_kolor"])
+    st.subheader("⬛ Klasyczne, czarne")
+    pokaz_pare([f"magazyn{sufiks}", f"split{sufiks}"])
 
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
