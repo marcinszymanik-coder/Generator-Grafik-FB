@@ -11,6 +11,7 @@ import datetime
 from zoneinfo import ZoneInfo  # NOWY IMPORT
 import json
 import gspread 
+import colorsys  # NOWY IMPORT: przeliczanie kolorów RGB <-> HSV
 
 # NOWOŚĆ: Biblioteka do renderowania emotikon na obrazkach!
 from pilmoji import Pilmoji 
@@ -147,11 +148,58 @@ def zawin_tekst(tekst, font, max_szerokosc):
     return linie_ostateczne
 
 # ==========================================
+# NOWOŚĆ: KOLOR DOMINUJĄCY ZE ZDJĘCIA
+# ==========================================
+def _dominujacy_odcien(sciezka_zdjecia):
+    """Zwraca (h, s, v) najczęstszego *wyraźnego* koloru ze zdjęcia albo None."""
+    img = Image.open(sciezka_zdjecia).convert("RGB")
+    img = img.resize((120, 120), Image.Resampling.LANCZOS)
+
+    # Redukcja do kilkunastu kolorów - dzięki temu łapiemy "plamę barwną", a nie pojedynczy piksel
+    paleta = img.quantize(colors=12, method=Image.Quantize.FASTOCTREE).convert("RGB")
+    kolory = paleta.getcolors(120 * 120) or []
+    kolory.sort(key=lambda x: x[0], reverse=True)
+
+    zapasowy = None
+    for _licznik, (r, g, b) in kolory:
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        # Pomijamy szarości, prawie-czernie i prawie-biele - z nich nie da się zrobić koloru
+        if s >= 0.18 and 0.12 < v < 0.95:
+            return (h, s, v)
+        # Zapasowo bierzemy najbardziej kolorowy z pozostałych, ale tylko jeśli w ogóle ma barwę
+        if s >= 0.08 and (zapasowy is None or s > zapasowy[1]):
+            zapasowy = (h, s, v)
+    return zapasowy  # None = zdjęcie praktycznie bez koloru -> zostaje czerń
+
+def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, jasnosc=0.30):
+    """
+    Zamienia kolor dominujący na ciemną, nasyconą 'podlewkę' pod biały napis.
+    Jasność jest sztywno przyciemniana, więc tekst ZAWSZE pozostaje czytelny.
+    Zwraca (r, g, b) albo None, jeśli cokolwiek pójdzie nie tak (wtedy leci czerń jak dotąd).
+    """
+    if not sciezka_zdjecia or not os.path.exists(sciezka_zdjecia):
+        return None
+    try:
+        odcien = _dominujacy_odcien(sciezka_zdjecia)
+        if odcien is None:
+            return None
+        h, s, _v = odcien
+        # Nasycenie: nie za blade (żeby było widać, że to kolor), nie za jaskrawe (żeby nie kłuło w oczy)
+        s = max(0.45, min(s * 1.25, 0.75))
+        r, g, b = colorsys.hsv_to_rgb(h, s, jasnosc)
+        return (int(r * 255), int(g * 255), int(b * 255))
+    except Exception as e:
+        print(f"⚠️ [KOLOR DOMINUJĄCY] Nie udało się wyliczyć koloru: {e}")
+        return None
+
+# ==========================================
 # GENERATOR 1: MAGAZYN 
 # ==========================================
-def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
+def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False, kolor_podkladu=None):
     szerokosc, wysokosc = 1080, 1080
-    canvas = Image.new("RGBA", (szerokosc, wysokosc), (0, 0, 0, 255))
+    # kolor_podkladu=None -> czerń, czyli dokładnie tak jak dotychczas
+    kolor_bazowy = kolor_podkladu if kolor_podkladu else (0, 0, 0)
+    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_bazowy + (255,))
     
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
         img = Image.open(sciezka_zdjecia).convert("RGBA")
@@ -179,7 +227,7 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     max_alpha = 245 if is_audio else 235
     for y in range(start_grad, wysokosc):
         alpha = int(max_alpha * ((y - start_grad) / (wysokosc - start_grad)))
-        draw_grad.line([(0, y), (szerokosc, y)], fill=(0, 0, 0, alpha))
+        draw_grad.line([(0, y), (szerokosc, y)], fill=kolor_bazowy + (alpha,))
     canvas = Image.alpha_composite(canvas, gradient)
     
     if sciezka_logo and os.path.exists(sciezka_logo):
@@ -217,11 +265,15 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
 # ==========================================
 # GENERATOR 2: SPLIT SCREEN 
 # ==========================================
-def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False):
+def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False, kolor_podkladu=None):
     szerokosc, wysokosc = 1080, 1080
     wys_zdjecia = int(szerokosc * 9 / 16)
     
-    kolor_tla_tekstu = (18, 18, 20) if is_audio else (25, 30, 35)
+    # kolor_podkladu=None -> stare, ciemne tło
+    if kolor_podkladu:
+        kolor_tla_tekstu = kolor_podkladu
+    else:
+        kolor_tla_tekstu = (18, 18, 20) if is_audio else (25, 30, 35)
     canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla_tekstu)
     
     if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
@@ -288,7 +340,11 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
             tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
             szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
 
-            kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
+            if kolor_podkladu:
+                # Na kolorowym tle szara stopka gaśnie - dajemy jasną, lekko przygaszoną biel
+                kolor_stopki = (235, 235, 235, 255)
+            else:
+                kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
             pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka)
 
     canvas = canvas.convert("RGB") 
@@ -297,12 +353,14 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 # ==========================================
 # GENEROWANIE WSZYSTKICH WARIANTÓW
 # ==========================================
-# Każdy wariant: klucz -> (plik roboczy, funkcja generująca, tekst stopki)
+# Każdy wariant: klucz -> (plik roboczy, funkcja generująca, tekst stopki, czy kolorowa podlewka)
 WARIANTY = {
-    "magazyn":     ("magazyn.jpg",     "magazyn", STOPKA_DOMYSLNA),
-    "split":       ("split.jpg",       "split",   STOPKA_DOMYSLNA),
-    "magazyn_bez": ("magazyn_bez.jpg", "magazyn", ""),
-    "split_bez":   ("split_bez.jpg",   "split",   ""),
+    "magazyn":       ("magazyn.jpg",       "magazyn", STOPKA_DOMYSLNA, False),
+    "split":         ("split.jpg",         "split",   STOPKA_DOMYSLNA, False),
+    "magazyn_bez":   ("magazyn_bez.jpg",   "magazyn", "",              False),
+    "split_bez":     ("split_bez.jpg",     "split",   "",              False),
+    "magazyn_kolor": ("magazyn_kolor.jpg", "magazyn", STOPKA_DOMYSLNA, True),
+    "split_kolor":   ("split_kolor.jpg",   "split",   STOPKA_DOMYSLNA, True),
 }
 
 # Karty interfejsu: klucz -> (podpis, etykieta przycisku, nazwa pliku do pobrania, nazwa w statystykach)
@@ -311,14 +369,20 @@ KARTY = {
     "split":       ("Styl Split Screen",                   "📥 Pobierz Split Screen",             "fb_split.jpg",                   "Split Screen"),
     "magazyn_bez": ("Styl Magazyn – bez komentarza",       "📥 Pobierz Magazyn (bez kom.)",       "fb_magazyn_bez_komentarza.jpg",  "Magazyn - bez komentarza"),
     "split_bez":   ("Styl Split Screen – bez komentarza",  "📥 Pobierz Split Screen (bez kom.)",  "fb_split_bez_komentarza.jpg",    "Split Screen - bez komentarza"),
+    "magazyn_kolor": ("Magazyn – kolor ze zdjęcia",        "📥 Pobierz Magazyn (kolor)",          "fb_magazyn_kolor.jpg",           "Magazyn - kolor dominujący"),
+    "split_kolor":   ("Split Screen – kolor ze zdjęcia",   "📥 Pobierz Split Screen (kolor)",     "fb_split_kolor.jpg",             "Split Screen - kolor dominujący"),
 }
 
 def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio):
-    """Renderuje wszystkie 4 warianty i zwraca słownik {klucz: bajty pliku}."""
+    """Renderuje wszystkie warianty i zwraca słownik {klucz: bajty pliku}."""
     gotowe = {}
-    for klucz, (plik_roboczy, styl, stopka) in WARIANTY.items():
+    # Kolor liczymy RAZ na zdjęcie, nie przy każdym wariancie
+    kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(sciezka_zdjecia)
+
+    for klucz, (plik_roboczy, styl, stopka, kolorowa) in WARIANTY.items():
         generator = generuj_grafike_magazyn if styl == "magazyn" else generuj_grafike_split
-        generator(sciezka_zdjecia, sciezka_do_logo, tytul, stopka, plik_roboczy, is_audio=is_audio)
+        kolor = kolor_ze_zdjecia if kolorowa else None
+        generator(sciezka_zdjecia, sciezka_do_logo, tytul, stopka, plik_roboczy, is_audio=is_audio, kolor_podkladu=kolor)
         with open(plik_roboczy, "rb") as f:
             gotowe[klucz] = f.read()
     return gotowe
@@ -409,6 +473,11 @@ if st.session_state.get('wygenerowano', False):
     st.markdown("---")
     st.subheader("🚫 Wersje bez napisu „ARTYKUŁ W KOMENTARZU”")
     pokaz_pare(["magazyn_bez", "split_bez"])
+
+    st.markdown("---")
+    st.subheader("🎨 Wersje z kolorem dominującym ze zdjęcia")
+    st.caption("Zamiast czarnej podlewki – przyciemniony kolor wyciągnięty ze zdjęcia. Jeśli zdjęcie jest szare lub czarno-białe, wariant wyjdzie identycznie jak klasyczny.")
+    pokaz_pare(["magazyn_kolor", "split_kolor"])
 
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
