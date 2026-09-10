@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo  # NOWY IMPORT
 import json
 import gspread 
 import colorsys  # NOWY IMPORT: przeliczanie kolorów RGB <-> HSV
+import math
 
 # NOWOŚĆ: Biblioteka do renderowania emotikon na obrazkach!
 from pilmoji import Pilmoji 
@@ -21,6 +22,9 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 # Domyślny tekst stopki (wersje "bez komentarza" dostają pusty string)
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
+
+# Znacznik wersji - widoczny w aplikacji, żeby od razu wiedzieć, czy działa podmieniony plik
+WERSJA_APP = "3.0 – kolor podlewki ważony powierzchnią"
 
 # ==========================================
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
@@ -150,44 +154,70 @@ def zawin_tekst(tekst, font, max_szerokosc):
 # ==========================================
 # NOWOŚĆ: KOLOR DOMINUJĄCY ZE ZDJĘCIA
 # ==========================================
-def _dominujacy_odcien(sciezka_zdjecia):
-    """Zwraca (h, s, v) najczęstszego *wyraźnego* koloru ze zdjęcia albo None."""
+def _analiza_barwna(sciezka_zdjecia):
+    """
+    Mierzy barwę CAŁEGO zdjęcia, ważąc każdy kolor jego udziałem w powierzchni.
+    Zwraca (odcien 0-1, srednie_nasycenie 0-1).
+    Dzięki ważeniu 0,7% pikseli (np. skóra dłoni) nie decyduje już o kolorze grafiki.
+    """
     img = Image.open(sciezka_zdjecia).convert("RGB")
     img = img.resize((120, 120), Image.Resampling.LANCZOS)
 
-    # Redukcja do kilkunastu kolorów - dzięki temu łapiemy "plamę barwną", a nie pojedynczy piksel
     paleta = img.quantize(colors=12, method=Image.Quantize.FASTOCTREE).convert("RGB")
     kolory = paleta.getcolors(120 * 120) or []
-    kolory.sort(key=lambda x: x[0], reverse=True)
+    laczna_liczba = sum(licznik for licznik, _ in kolory) or 1
 
-    zapasowy = None
-    for _licznik, (r, g, b) in kolory:
+    x = y = waga_odcienia = 0.0
+    srednie_nasycenie = 0.0
+
+    for licznik, (r, g, b) in kolory:
+        udzial = licznik / laczna_liczba
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        # Pomijamy szarości, prawie-czernie i prawie-biele - z nich nie da się zrobić koloru
-        if s >= 0.18 and 0.12 < v < 0.95:
-            return (h, s, v)
-        # Zapasowo bierzemy najbardziej kolorowy z pozostałych, ale tylko jeśli w ogóle ma barwę
-        if s >= 0.08 and (zapasowy is None or s > zapasowy[1]):
-            zapasowy = (h, s, v)
-    return zapasowy  # None = zdjęcie praktycznie bez koloru -> zostaje czerń
 
-def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, jasnosc=0.30):
+        # Czernie i przepalone biele nie niosą informacji o barwie
+        if v < 0.10 or v > 0.97:
+            continue
+
+        srednie_nasycenie += udzial * s
+
+        # Odcień uśredniamy wektorowo (kołowo), bo 350° i 10° to sąsiedzi, a nie przeciwieństwa
+        if s >= 0.12:
+            waga = udzial * s
+            kat = 2 * math.pi * h
+            x += waga * math.cos(kat)
+            y += waga * math.sin(kat)
+            waga_odcienia += waga
+
+    odcien = 0.0 if waga_odcienia == 0 else (math.atan2(y, x) / (2 * math.pi)) % 1.0
+    return odcien, srednie_nasycenie
+
+def _na_podklad(odcien, nasycenie):
+    """Zamienia odcień i nasycenie na ciemną podlewkę, na której biały napis jest czytelny."""
+    # Im mniej barwne zdjęcie, tym ciemniej - szarość musi być ciemniejsza niż kolor,
+    # żeby utrzymać ten sam kontrast pod białym napisem.
+    jasnosc = 0.30 if nasycenie >= 0.15 else 0.24
+    r, g, b = colorsys.hsv_to_rgb(odcien, nasycenie, jasnosc)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+def znormalizuj_kolor_podkladu(rgb):
+    """Przycina dowolny kolor (np. wybrany ręcznie) do bezpiecznego zakresu jasności."""
+    h, s, _v = colorsys.rgb_to_hsv(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
+    return _na_podklad(h, min(s, 0.75))
+
+def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, maks_nasycenie=0.65):
     """
-    Zamienia kolor dominujący na ciemną, nasyconą 'podlewkę' pod biały napis.
-    Jasność jest sztywno przyciemniana, więc tekst ZAWSZE pozostaje czytelny.
-    Zwraca (r, g, b) albo None, jeśli cokolwiek pójdzie nie tak (wtedy leci czerń jak dotąd).
+    Kolor podlewki wyliczony ze zdjęcia. Nasycenie NIE jest podbijane do sztywnego minimum -
+    wynika z tego, jak barwne naprawdę jest zdjęcie. Szare zdjęcie da grafit, nie brąz.
+    Zwraca (r, g, b) albo None, jeśli coś pójdzie nie tak (wtedy leci czerń jak dotąd).
     """
     if not sciezka_zdjecia or not os.path.exists(sciezka_zdjecia):
         return None
     try:
-        odcien = _dominujacy_odcien(sciezka_zdjecia)
-        if odcien is None:
-            return None
-        h, s, _v = odcien
-        # Nasycenie: nie za blade (żeby było widać, że to kolor), nie za jaskrawe (żeby nie kłuło w oczy)
-        s = max(0.45, min(s * 1.25, 0.75))
-        r, g, b = colorsys.hsv_to_rgb(h, s, jasnosc)
-        return (int(r * 255), int(g * 255), int(b * 255))
+        odcien, nasycenie = _analiza_barwna(sciezka_zdjecia)
+        # Lekkie wzmocnienie, żeby stonowane zdjęcia nie wychodziły całkiem bure,
+        # ale bez sztywnej podłogi - stąd szare zdjęcie zostaje szare.
+        nasycenie = min(nasycenie * 2.5, maks_nasycenie)
+        return _na_podklad(odcien, nasycenie)
     except Exception as e:
         print(f"⚠️ [KOLOR DOMINUJĄCY] Nie udało się wyliczyć koloru: {e}")
         return None
@@ -377,11 +407,18 @@ KARTY = {
     "split_kolor_bez":   ("Split Screen – kolor ze zdjęcia", "📥 Pobierz Split Screen (kolor, bez kom.)", "fb_split_kolor_bez_komentarza.jpg",   "Split Screen - kolor dominujący - bez komentarza"),
 }
 
-def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio):
-    """Renderuje wszystkie warianty i zwraca słownik {klucz: bajty pliku}."""
+def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio, kolor_wymuszony=None):
+    """
+    Renderuje wszystkie warianty.
+    Zwraca (słownik {klucz: bajty pliku}, użyty kolor podlewki).
+    kolor_wymuszony pozwala nadpisać automat własnym kolorem (i tak zostanie przyciemniony).
+    """
     gotowe = {}
     # Kolor liczymy RAZ na zdjęcie, nie przy każdym wariancie
-    kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(sciezka_zdjecia)
+    if kolor_wymuszony:
+        kolor_ze_zdjecia = znormalizuj_kolor_podkladu(kolor_wymuszony)
+    else:
+        kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(sciezka_zdjecia)
 
     for klucz, (plik_roboczy, styl, stopka, kolorowa) in WARIANTY.items():
         generator = generuj_grafike_magazyn if styl == "magazyn" else generuj_grafike_split
@@ -389,7 +426,7 @@ def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio):
         generator(sciezka_zdjecia, sciezka_do_logo, tytul, stopka, plik_roboczy, is_audio=is_audio, kolor_podkladu=kolor)
         with open(plik_roboczy, "rb") as f:
             gotowe[klucz] = f.read()
-    return gotowe
+    return gotowe, kolor_ze_zdjecia
 
 # ==========================================
 # INTERFEJS STREAMLIT 
@@ -398,6 +435,7 @@ st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="
 
 st.title("🎨 Automatyczny Generator Grafik")
 st.write("Wklej link, zobacz gotowe grafiki, a potem edytuj tekst, dodawaj emotikony 🔥 i pobieraj!")
+st.caption(f"wersja {WERSJA_APP}")
 
 pobierz_nowoczesne_czcionki()
 
@@ -441,8 +479,9 @@ with st.container():
                     st.session_state.sciezka_do_logo = sciezka_do_logo
                     st.session_state.is_audio_brand = is_audio_brand
                     st.session_state.logo_nazwa = wybrane_logo
+                    st.session_state.kolor_reczny = None  # nowe zdjęcie = wracamy do automatu
                     
-                    st.session_state.grafiki = wygeneruj_grafiki(
+                    st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
                         zdjecie_tmp, sciezka_do_logo, tytul, is_audio_brand
                     )
                     st.session_state.wygenerowano = True
@@ -482,8 +521,36 @@ if st.session_state.get('wygenerowano', False):
     sufiks = "" if z_komentarzem else "_bez"
 
     st.subheader("🎨 Kolor ze zdjęcia")
-    st.caption("Podlewka w przyciemnionym kolorze dominującym zdjęcia. Przy zdjęciach czarno-białych lub bezbarwnych wariant wyjdzie identycznie jak klasyczny.")
+    st.caption("Podlewka w kolorze wyliczonym z całego zdjęcia (ważonym powierzchnią). Zdjęcie bez wyraźnej barwy – np. szara łazienka – da ciemny grafit, a nie przypadkowy kolor.")
     pokaz_pare([f"magazyn_kolor{sufiks}", f"split_kolor{sufiks}"])
+
+    kolor_uzyty = st.session_state.get('kolor_uzyty')
+    if kolor_uzyty:
+        hex_uzyty = "#{:02x}{:02x}{:02x}".format(*kolor_uzyty)
+        with st.expander(f"🎚️ Kolor podlewki: {hex_uzyty} – zmień ręcznie"):
+            st.caption("Wybrany kolor i tak zostanie przyciemniony do poziomu, przy którym biały napis pozostaje czytelny.")
+            nowy_kolor = st.color_picker("Wybierz kolor:", value=hex_uzyty)
+            kol_a, kol_b = st.columns(2)
+
+            def przelicz(kolor_wymuszony):
+                st.session_state.kolor_reczny = kolor_wymuszony
+                st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
+                    st.session_state.sciezka_zdjecia_tmp,
+                    st.session_state.sciezka_do_logo,
+                    st.session_state.aktualny_tytul,
+                    st.session_state.is_audio_brand,
+                    kolor_wymuszony=kolor_wymuszony
+                )
+
+            if kol_a.button("🎨 Zastosuj ten kolor", width="stretch"):
+                with st.spinner("Przeliczam..."):
+                    przelicz(tuple(int(nowy_kolor.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)))
+                st.rerun()
+
+            if kol_b.button("↩️ Wróć do koloru ze zdjęcia", width="stretch"):
+                with st.spinner("Przeliczam..."):
+                    przelicz(None)
+                st.rerun()
 
     st.markdown("---")
     st.subheader("⬛ Klasyczne, czarne")
@@ -496,11 +563,12 @@ if st.session_state.get('wygenerowano', False):
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
-            st.session_state.grafiki = wygeneruj_grafiki(
+            st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
                 st.session_state.sciezka_zdjecia_tmp,
                 st.session_state.sciezka_do_logo,
                 nowy_tytul,
-                st.session_state.is_audio_brand
+                st.session_state.is_audio_brand,
+                kolor_wymuszony=st.session_state.get('kolor_reczny')
             )
             st.session_state.aktualny_tytul = nowy_tytul
             st.rerun()
