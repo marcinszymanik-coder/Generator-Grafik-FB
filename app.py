@@ -8,13 +8,12 @@ from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import streamlit as st
 import datetime
-from zoneinfo import ZoneInfo  # NOWY IMPORT
+from zoneinfo import ZoneInfo
 import json
 import gspread 
-import colorsys  # NOWY IMPORT: przeliczanie kolorów RGB <-> HSV
+import colorsys
 import math
 
-# NOWOŚĆ: Biblioteka do renderowania emotikon na obrazkach!
 from pilmoji import Pilmoji 
 
 # Wyłączenie weryfikacji certyfikatów SSL
@@ -24,7 +23,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 # Znacznik wersji - widoczny w aplikacji, żeby od razu wiedzieć, czy działa podmieniony plik
-WERSJA_APP = "3.0 – kolor podlewki ważony powierzchnią"
+WERSJA_APP = "3.1 – obsługa mniejszego podtytułu (użyj znaku |)"
 
 # ==========================================
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
@@ -45,6 +44,7 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
         print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
+
 # ==========================================
 # FUNKCJE BAZOWE
 # ==========================================
@@ -152,14 +152,9 @@ def zawin_tekst(tekst, font, max_szerokosc):
     return linie_ostateczne
 
 # ==========================================
-# NOWOŚĆ: KOLOR DOMINUJĄCY ZE ZDJĘCIA
+# KOLOR DOMINUJĄCY ZE ZDJĘCIA
 # ==========================================
 def _analiza_barwna(sciezka_zdjecia):
-    """
-    Mierzy barwę CAŁEGO zdjęcia, ważąc każdy kolor jego udziałem w powierzchni.
-    Zwraca (odcien 0-1, srednie_nasycenie 0-1).
-    Dzięki ważeniu 0,7% pikseli (np. skóra dłoni) nie decyduje już o kolorze grafiki.
-    """
     img = Image.open(sciezka_zdjecia).convert("RGB")
     img = img.resize((120, 120), Image.Resampling.LANCZOS)
 
@@ -174,13 +169,11 @@ def _analiza_barwna(sciezka_zdjecia):
         udzial = licznik / laczna_liczba
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
 
-        # Czernie i przepalone biele nie niosą informacji o barwie
         if v < 0.10 or v > 0.97:
             continue
 
         srednie_nasycenie += udzial * s
 
-        # Odcień uśredniamy wektorowo (kołowo), bo 350° i 10° to sąsiedzi, a nie przeciwieństwa
         if s >= 0.12:
             waga = udzial * s
             kat = 2 * math.pi * h
@@ -192,30 +185,19 @@ def _analiza_barwna(sciezka_zdjecia):
     return odcien, srednie_nasycenie
 
 def _na_podklad(odcien, nasycenie):
-    """Zamienia odcień i nasycenie na ciemną podlewkę, na której biały napis jest czytelny."""
-    # Im mniej barwne zdjęcie, tym ciemniej - szarość musi być ciemniejsza niż kolor,
-    # żeby utrzymać ten sam kontrast pod białym napisem.
     jasnosc = 0.30 if nasycenie >= 0.15 else 0.24
     r, g, b = colorsys.hsv_to_rgb(odcien, nasycenie, jasnosc)
     return (int(r * 255), int(g * 255), int(b * 255))
 
 def znormalizuj_kolor_podkladu(rgb):
-    """Przycina dowolny kolor (np. wybrany ręcznie) do bezpiecznego zakresu jasności."""
     h, s, _v = colorsys.rgb_to_hsv(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
     return _na_podklad(h, min(s, 0.75))
 
 def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, maks_nasycenie=0.65):
-    """
-    Kolor podlewki wyliczony ze zdjęcia. Nasycenie NIE jest podbijane do sztywnego minimum -
-    wynika z tego, jak barwne naprawdę jest zdjęcie. Szare zdjęcie da grafit, nie brąz.
-    Zwraca (r, g, b) albo None, jeśli coś pójdzie nie tak (wtedy leci czerń jak dotąd).
-    """
     if not sciezka_zdjecia or not os.path.exists(sciezka_zdjecia):
         return None
     try:
         odcien, nasycenie = _analiza_barwna(sciezka_zdjecia)
-        # Lekkie wzmocnienie, żeby stonowane zdjęcia nie wychodziły całkiem bure,
-        # ale bez sztywnej podłogi - stąd szare zdjęcie zostaje szare.
         nasycenie = min(nasycenie * 2.5, maks_nasycenie)
         return _na_podklad(odcien, nasycenie)
     except Exception as e:
@@ -227,7 +209,6 @@ def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, maks_nasycenie=0.65):
 # ==========================================
 def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False, kolor_podkladu=None):
     szerokosc, wysokosc = 1080, 1080
-    # kolor_podkladu=None -> czerń, czyli dokładnie tak jak dotychczas
     kolor_bazowy = kolor_podkladu if kolor_podkladu else (0, 0, 0)
     canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_bazowy + (255,))
     
@@ -265,25 +246,53 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
         canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
 
-    rozmiar_fontu = 46 if len(tekst_glowny) > 50 else 55
+    # Przygotowanie tekstów i rozmiarów (obsługa znaku podziału |)
+    czesci_tytulu = tekst_glowny.split('|')
+    tekst_duzy = czesci_tytulu[0].strip()
+    tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
+
+    rozmiar_fontu = 46 if len(tekst_duzy) > 50 else 55
+    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65) # Proporcjonalnie mniejszy font
+    
     try:
         font_duzy = ImageFont.truetype("Montserrat-Bold.ttf", rozmiar_fontu)
+        font_maly = ImageFont.truetype("Montserrat-SemiBold.ttf", rozmiar_fontu_maly)
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 24)
     except Exception: return
 
     kolor_biel = (255, 255, 255, 255)
-    linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 140)
+    
+    # Zawijanie linii i wyliczanie wysokości bloku
+    linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
-    y_tekstu_poczatkowy = (wysokosc - 280) - ((len(linie_glowne) * wysokosc_linii) / 2)
+    
+    linie_male = []
+    wysokosc_linii_male = rozmiar_fontu_maly + 10
+    if tekst_maly:
+        linie_male = zawin_tekst(tekst_maly.upper(), font_maly, szerokosc - 140)
 
-    # NOWOŚĆ: Używamy Pilmoji zamiast standardowego draw, aby obsłużyć emoji
+    # Obliczenie pełnej wysokości obu tekstów dla idealnego wyśrodkowania
+    calkowita_wysokosc = (len(linie_glowne) * wysokosc_linii)
+    if tekst_maly:
+        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male) # +20px przerwy między tytułami
+
+    y_tekstu_poczatkowy = (wysokosc - 280) - (calkowita_wysokosc / 2)
+
     with Pilmoji(canvas) as pilmoji:
+        # Rysowanie dużej części
         for linia in linie_glowne:
             szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        # Stopkę rysujemy tylko wtedy, gdy tekst został podany (wersja "bez komentarza" go nie ma)
+        # Rysowanie małej części, jeśli istnieje
+        if tekst_maly:
+            y_tekstu_poczatkowy += 20 # Przerwa
+            for linia in linie_male:
+                szer_linii = font_maly.getlength(linia) if hasattr(font_maly, 'getlength') else font_maly.getbbox(linia)[2]
+                pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_maly)
+                y_tekstu_poczatkowy += wysokosc_linii_male
+
         if tekst_stopki:
             tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
             szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
@@ -299,7 +308,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     szerokosc, wysokosc = 1080, 1080
     wys_zdjecia = int(szerokosc * 9 / 16)
     
-    # kolor_podkladu=None -> stare, ciemne tło
     if kolor_podkladu:
         kolor_tla_tekstu = kolor_podkladu
     else:
@@ -347,31 +355,57 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
         canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
 
-    rozmiar_fontu = 48 if len(tekst_glowny) > 50 else 56
+    # Przygotowanie tekstów i rozmiarów (obsługa znaku podziału |)
+    czesci_tytulu = tekst_glowny.split('|')
+    tekst_duzy = czesci_tytulu[0].strip()
+    tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
+
+    rozmiar_fontu = 48 if len(tekst_duzy) > 50 else 56
+    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65)
+    
     try:
         font_duzy = ImageFont.truetype("Montserrat-Bold.ttf", rozmiar_fontu)
+        font_maly = ImageFont.truetype("Montserrat-SemiBold.ttf", rozmiar_fontu_maly)
         font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 22)
     except Exception: return
 
     kolor_biel = (255, 255, 255, 255)
-    linie_glowne = zawin_tekst(tekst_glowny.upper(), font_duzy, szerokosc - 100)
+    
+    # Zawijanie linii i wyliczanie wysokości bloku
+    linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 100)
     wysokosc_linii = rozmiar_fontu + 15
-    y_tekstu_poczatkowy = (wys_zdjecia + ((wysokosc - wys_zdjecia) / 2)) - ((len(linie_glowne) * wysokosc_linii) / 2) - 20 
 
-    # NOWOŚĆ: Używamy Pilmoji zamiast standardowego draw, aby obsłużyć emoji
+    linie_male = []
+    wysokosc_linii_male = rozmiar_fontu_maly + 10
+    if tekst_maly:
+        linie_male = zawin_tekst(tekst_maly.upper(), font_maly, szerokosc - 100)
+        
+    calkowita_wysokosc = (len(linie_glowne) * wysokosc_linii)
+    if tekst_maly:
+        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male)
+
+    y_tekstu_poczatkowy = (wys_zdjecia + ((wysokosc - wys_zdjecia) / 2)) - (calkowita_wysokosc / 2) - 20 
+
     with Pilmoji(canvas) as pilmoji:
+        # Rysowanie dużej części
         for linia in linie_glowne:
             szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        # Stopkę rysujemy tylko wtedy, gdy tekst został podany (wersja "bez komentarza" go nie ma)
+        # Rysowanie małej części, jeśli istnieje
+        if tekst_maly:
+            y_tekstu_poczatkowy += 20
+            for linia in linie_male:
+                szer_linii = font_maly.getlength(linia) if hasattr(font_maly, 'getlength') else font_maly.getbbox(linia)[2]
+                pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_maly)
+                y_tekstu_poczatkowy += wysokosc_linii_male
+
         if tekst_stopki:
             tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
             szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
 
             if kolor_podkladu:
-                # Na kolorowym tle szara stopka gaśnie - dajemy jasną, lekko przygaszoną biel
                 kolor_stopki = (235, 235, 235, 255)
             else:
                 kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
@@ -383,7 +417,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 # ==========================================
 # GENEROWANIE WSZYSTKICH WARIANTÓW
 # ==========================================
-# Każdy wariant: klucz -> (plik roboczy, funkcja generująca, tekst stopki, czy kolorowa podlewka)
 WARIANTY = {
     "magazyn":       ("magazyn.jpg",       "magazyn", STOPKA_DOMYSLNA, False),
     "split":         ("split.jpg",         "split",   STOPKA_DOMYSLNA, False),
@@ -395,7 +428,6 @@ WARIANTY = {
     "split_kolor_bez":   ("split_kolor_bez.jpg",   "split",   "", True),
 }
 
-# Karty interfejsu: klucz -> (podpis, etykieta przycisku, nazwa pliku do pobrania, nazwa w statystykach)
 KARTY = {
     "magazyn":     ("Styl Magazyn",                        "📥 Pobierz Magazyn",                  "fb_magazyn.jpg",                 "Magazyn"),
     "split":       ("Styl Split Screen",                   "📥 Pobierz Split Screen",             "fb_split.jpg",                   "Split Screen"),
@@ -408,13 +440,7 @@ KARTY = {
 }
 
 def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio, kolor_wymuszony=None):
-    """
-    Renderuje wszystkie warianty.
-    Zwraca (słownik {klucz: bajty pliku}, użyty kolor podlewki).
-    kolor_wymuszony pozwala nadpisać automat własnym kolorem (i tak zostanie przyciemniony).
-    """
     gotowe = {}
-    # Kolor liczymy RAZ na zdjęcie, nie przy każdym wariancie
     if kolor_wymuszony:
         kolor_ze_zdjecia = znormalizuj_kolor_podkladu(kolor_wymuszony)
     else:
@@ -479,7 +505,7 @@ with st.container():
                     st.session_state.sciezka_do_logo = sciezka_do_logo
                     st.session_state.is_audio_brand = is_audio_brand
                     st.session_state.logo_nazwa = wybrane_logo
-                    st.session_state.kolor_reczny = None  # nowe zdjęcie = wracamy do automatu
+                    st.session_state.kolor_reczny = None  
                     
                     st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
                         zdjecie_tmp, sciezka_do_logo, tytul, is_audio_brand
@@ -511,8 +537,6 @@ if st.session_state.get('wygenerowano', False):
                     args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
                 )
 
-    # Przełącznik zamiast osobnych sekcji - te same 4 kafelki, tylko ze stopką albo bez.
-    # Wszystkie warianty są już wyrenderowane, więc przełączanie jest natychmiastowe.
     z_komentarzem = st.toggle(
         "Napis „ARTYKUŁ W KOMENTARZU”",
         value=True,
@@ -559,7 +583,8 @@ if st.session_state.get('wygenerowano', False):
     st.markdown("---")
     st.subheader("✍️ Chcesz coś poprawić?")
     
-    nowy_tytul = st.text_area("Edytuj tytuł i wygeneruj ponownie (użyj klawisza Enter, by wymusić przełamanie linii):", value=st.session_state.aktualny_tytul, height=100)
+    # Zaktualizowana podpowiedź tłumacząca użycie znaku |
+    nowy_tytul = st.text_area("Edytuj tytuł (użyj Enter by złamać linię. Wstaw znak '|', by tekst po nim był mniejszym podtytułem):", value=st.session_state.aktualny_tytul, height=100)
     
     if st.button("🔄 Zaktualizuj napisy"):
         with st.spinner("Odświeżam grafiki..."):
