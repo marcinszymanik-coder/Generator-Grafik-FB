@@ -1368,7 +1368,141 @@ def utworz_gradient_covera(kolor_tla):
 
     return canvas, lewy_kolor
 
+def przytnij_przezroczyste_marginesy(obraz):
+    """
+    Usuwa puste, przezroczyste marginesy z pliku logo.
+    Dzięki temu logo można prawidłowo powiększyć.
+    """
+    obraz = obraz.convert("RGBA")
+    kanal_alpha = obraz.getchannel("A")
+    bbox = kanal_alpha.getbbox()
 
+    if bbox:
+        return obraz.crop(bbox)
+
+    return obraz
+
+
+def przygotuj_duze_logo(obraz, maks_szerokosc=560, maks_wysokosc=145):
+    """
+    Dopasowuje logo i – w przeciwieństwie do thumbnail() –
+    pozwala również powiększyć mały plik.
+    """
+    obraz = przytnij_przezroczyste_marginesy(obraz)
+
+    skala = min(
+        maks_szerokosc / obraz.width,
+        maks_wysokosc / obraz.height,
+    )
+
+    nowa_szerokosc = max(
+        1,
+        int(obraz.width * skala),
+    )
+
+    nowa_wysokosc = max(
+        1,
+        int(obraz.height * skala),
+    )
+
+    return obraz.resize(
+        (nowa_szerokosc, nowa_wysokosc),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def kolor_akcentowy_ze_zdjecia(zrodlo_obrazu):
+    """
+    Szuka wyrazistego koloru na okładce.
+    Preferuje kolory nasycone, ale nie bardzo ciemne ani bardzo jasne.
+    """
+    try:
+        obraz = wczytaj_obraz(
+            zrodlo_obrazu
+        ).convert("RGB")
+
+        obraz.thumbnail(
+            (150, 150),
+            Image.Resampling.LANCZOS,
+        )
+
+        paleta = obraz.quantize(
+            colors=20,
+            method=Image.Quantize.FASTOCTREE,
+        ).convert("RGB")
+
+        kolory = paleta.getcolors(
+            paleta.width * paleta.height
+        ) or []
+
+        laczna_liczba = sum(
+            licznik
+            for licznik, _ in kolory
+        ) or 1
+
+        najlepszy_kolor = None
+        najlepszy_wynik = -1
+
+        for licznik, rgb in kolory:
+            r, g, b = rgb
+
+            h, s, v = colorsys.rgb_to_hsv(
+                r / 255,
+                g / 255,
+                b / 255,
+            )
+
+            # Odrzucamy szarości, czerń i niemal białe kolory
+            if s < 0.20 or v < 0.22 or v > 0.94:
+                continue
+
+            udzial = licznik / laczna_liczba
+
+            # Preferujemy kolory nasycone.
+            # Udział powierzchniowy ma mniejsze znaczenie.
+            wynik = (
+                (0.25 + udzial)
+                * (s ** 1.7)
+                * (1.0 - abs(v - 0.65) * 0.55)
+            )
+
+            if wynik > najlepszy_wynik:
+                najlepszy_wynik = wynik
+                najlepszy_kolor = (h, s, v)
+
+        if najlepszy_kolor is None:
+            return (177, 55, 121)
+
+        h, s, v = najlepszy_kolor
+
+        # Uszlachetniamy kolor do zastosowania w projekcie
+        s = ogranicz(
+            s * 1.08,
+            0.48,
+            0.82,
+        )
+
+        v = ogranicz(
+            v,
+            0.48,
+            0.76,
+        )
+
+        r, g, b = colorsys.hsv_to_rgb(
+            h,
+            s,
+            v,
+        )
+
+        return (
+            int(r * 255),
+            int(g * 255),
+            int(b * 255),
+        )
+
+    except Exception:
+        return (177, 55, 121)
+        
 def generuj_cover_fb(
     zrodlo_okladki,
     sciezka_logo,
