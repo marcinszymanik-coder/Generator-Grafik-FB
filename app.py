@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.3 – usunięto dekoracyjne elipsy z covera"
+    "5.4 – usunięto kolorowy panel z covera"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -1889,44 +1889,6 @@ def generuj_cover_fb(
             [(x, 0), (x, wysokosc)],
             fill=kolor + (255,),
         )
-
-    # ========================================================
-    # KOLOROWY PANEL
-    # ========================================================
-
-    panel = Image.new(
-        "RGBA",
-        canvas.size,
-        (0, 0, 0, 0),
-    )
-
-    draw_panel = ImageDraw.Draw(
-        panel
-    )
-
-    kolor_panelu = mieszaj_kolory(
-        kolor_akcentowy,
-        (25, 25, 30),
-        0.12,
-    )
-
-    draw_panel.rounded_rectangle(
-        (
-            970,
-            -90,
-            1730,
-            810,
-        ),
-        radius=125,
-        fill=kolor_panelu + (255,),
-    )
-
-    canvas = Image.alpha_composite(
-        canvas,
-        panel,
-    )
-
-    draw = ImageDraw.Draw(canvas)
 
     # ========================================================
     # LOGO
