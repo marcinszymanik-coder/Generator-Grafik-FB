@@ -1096,10 +1096,11 @@ def kolor_pastelowy_ze_zdjecia(
             zrodlo_obrazu
         )
 
+        # Zwiększamy widełki nasycenia, by kolor był bardziej soczysty
         nasycenie_docelowe = ogranicz(
-            0.12 + nasycenie * 0.20,
-            0.12,
-            0.24,
+            0.15 + nasycenie * 0.40,
+            0.15,
+            0.35,
         )
 
         r, g, b = colorsys.hsv_to_rgb(
@@ -1853,17 +1854,14 @@ def generuj_cover_fb(
     if nasycenie_reczne > 0.32:
         kolor_akcentowy = kolor_tla
 
-    # Neutralne tło, tylko lekko zabarwione.
-    kolor_lewy = mieszaj_kolory(
-        (248, 247, 244),
-        kolor_tla,
-        0.05,
-    )
+    # Używamy pełnego, w 100% wyliczonego (lub wybranego) koloru tła
+    kolor_lewy = kolor_tla
 
+    # Prawą stronę minimalnie przyciemniamy, by uzyskać ładny gradient pod okładką
     kolor_prawy = mieszaj_kolory(
-        (242, 241, 238),
-        kolor_akcentowy,
-        0.05,
+        kolor_tla,
+        (0, 0, 0),
+        0.06,
     )
 
     canvas = Image.new(
