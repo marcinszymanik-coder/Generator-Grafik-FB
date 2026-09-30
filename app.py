@@ -1088,24 +1088,22 @@ def kolor_podkladu_ze_zdjecia(
         return (28, 30, 34)
 
 
-def kolor_pastelowy_ze_zdjecia(
-    zrodlo_obrazu,
-):
+def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
     try:
-        odcien, nasycenie = analiza_barwna(
-            zrodlo_obrazu
-        )
-
-        nasycenie_docelowe = ogranicz(
-            0.15 + nasycenie * 0.40,
-            0.15,
-            0.35,
-        )
+        # 1. Pobieramy odcień dokładnie tak, jak w dobrze działających postach
+        odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
+        
+        # 2. Narzucamy bardzo jasny podkład (value blisko 1.0)
+        jasnosc = 0.96 
+        
+        # 3. Delikatne nasycenie, by kolor nie był brudny
+        # Jeśli zdjęcie jest bardzo szare, dodajemy trochę ciepła
+        nasycenie_docelowe = min(max(nasycenie * 0.35, 0.08), 0.18)
 
         r, g, b = colorsys.hsv_to_rgb(
             odcien,
             nasycenie_docelowe,
-            0.94,
+            jasnosc,
         )
 
         return (
@@ -1115,7 +1113,8 @@ def kolor_pastelowy_ze_zdjecia(
         )
 
     except Exception:
-        return (229, 209, 212)
+        # Zapasowy, jasny, czysty szary
+        return (242, 242, 244)
 
 
 def kolor_akcentowy_ze_zdjecia(
