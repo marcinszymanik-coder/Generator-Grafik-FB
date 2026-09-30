@@ -5,7 +5,7 @@ import requests
 from io import BytesIO
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 import streamlit as st
 import datetime
 from zoneinfo import ZoneInfo
@@ -23,7 +23,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 # Znacznik wersji
-WERSJA_APP = "4.1 – obsługa mniejszego podtytułu, generator Coverów FB z pastelowym tłem"
+WERSJA_APP = "4.2 – Cover z cieniem i wyrównaniem do prawej"
 
 # ==========================================
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
@@ -208,11 +208,10 @@ def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, maks_nasycenie=0.65):
 def kolor_pastelowy_ze_zdjecia(sciezka_zdjecia):
     try:
         odcien, _ = _analiza_barwna(sciezka_zdjecia)
-        # Wymuszamy pastelowy odcień (bardzo niskie nasycenie, wysoka jasność)
         r, g, b = colorsys.hsv_to_rgb(odcien, 0.16, 0.95)
         return (int(r * 255), int(g * 255), int(b * 255))
     except Exception:
-        return (245, 235, 240) # Zapasowy, neutralny jasny róż
+        return (245, 235, 240) 
 
 # ==========================================
 # GENERATOR 1: MAGAZYN 
@@ -417,66 +416,79 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
 
 # ==========================================
-# GENERATOR 3: COVER NA FB (NOWOŚĆ)
+# GENERATOR 3: COVER NA FB (NOWOŚĆ Z CIENIEM)
 # ==========================================
 def generuj_cover_fb(sciezka_okladki, sciezka_logo, tekst_gora, tekst_dol, nazwa_wyjsciowa, kolor_tla):
     szerokosc, wysokosc = 1640, 624 
     canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla + (255,))
     
-    # 1. Wklejanie okładki magazynu (prawa strona) - trochę większa
+    # --- 1. Obsługa okładki z CIENIEM ---
+    pozycja_x_okladki = szerokosc - 400 
     if sciezka_okladki and os.path.exists(sciezka_okladki):
         okladka = Image.open(sciezka_okladki).convert("RGBA")
-        docelowa_wys = wysokosc - 50 
+        
+        docelowa_wys = wysokosc - 80 
         wspolczynnik = docelowa_wys / okladka.height
         docelowa_szer = int(okladka.width * wspolczynnik)
         okladka = okladka.resize((docelowa_szer, docelowa_wys), Image.Resampling.LANCZOS)
         
-        pozycja_x_okladki = szerokosc - docelowa_szer - 80
-        pozycja_y_okladki = 25
-        canvas.paste(okladka, (pozycja_x_okladki, pozycja_y_okladki))
-    else:
-        pozycja_x_okladki = szerokosc - 400
+        pozycja_x_okladki = szerokosc - docelowa_szer - 150 
+        pozycja_y_okladki = (wysokosc - docelowa_wys) // 2
 
-    srodek_lewej_strony = pozycja_x_okladki // 2
+        # Generowanie cienia
+        cien = Image.new('RGBA', (docelowa_szer, docelowa_wys), (0, 0, 0, 255))
+        warstwa_cienia = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
+        przesuniecie_cienia_x = 20
+        przesuniecie_cienia_y = 20
+        warstwa_cienia.paste(cien, (pozycja_x_okladki + przesuniecie_cienia_x, pozycja_y_okladki + przesuniecie_cienia_y))
+        
+        warstwa_cienia = warstwa_cienia.filter(ImageFilter.GaussianBlur(25))
+        dane_cienia = warstwa_cienia.getdata()
+        nowe_dane_cienia = []
+        for item in dane_cienia:
+            nowe_dane_cienia.append((item[0], item[1], item[2], int(item[3] * 0.4)))
+        warstwa_cienia.putdata(nowe_dane_cienia)
 
-    # 2. Inicjalizacja czcionek
+        canvas = Image.alpha_composite(canvas, warstwa_cienia)
+        canvas.paste(okladka, (pozycja_x_okladki, pozycja_y_okladki), okladka)
+
+
+    # --- 2. Inicjalizacja czcionek ---
     try:
-        font_gora = ImageFont.truetype("Montserrat-SemiBold.ttf", 38)
-        font_dol = ImageFont.truetype("Montserrat-Bold.ttf", 55)
+        font_gora = ImageFont.truetype("Montserrat-SemiBold.ttf", 40)
+        font_dol = ImageFont.truetype("Montserrat-Bold.ttf", 48)
     except Exception:
         return
 
-    # 3. Obliczanie wysokości bloku (Logo + Teksty) dla idealnego wyśrodkowania
+    # --- 3. Obliczanie wysokości bloku (Logo + Teksty) i pozycjonowanie ---
     wysokosc_bloku = 0
     logo = None
     if sciezka_logo and os.path.exists(sciezka_logo):
         logo = Image.open(sciezka_logo).convert("RGBA")
-        logo.thumbnail((500, 200), Image.Resampling.LANCZOS)
-        wysokosc_bloku += logo.height + 20
+        logo.thumbnail((500, 180), Image.Resampling.LANCZOS)
+        wysokosc_bloku += logo.height + 15 
     
-    # Dodanie wysokości samych tekstów i przerw (ok. 100px)
-    wysokosc_bloku += 100 
-    
-    # Pozycja startowa y dla całego bloku
+    wysokosc_bloku += 40 + 48 + 15 
     y_tekstu = (wysokosc - wysokosc_bloku) // 2
 
-    if logo:
-        poz_logo_x = srodek_lewej_strony - (logo.width // 2)
-        canvas.paste(logo, (poz_logo_x, y_tekstu), logo)
-        y_tekstu += logo.height + 30
+    # Prawa krawędź do wyrównania (odsunięta o 50px w lewo od okładki)
+    prawa_krawedz_tekstu = pozycja_x_okladki - 50
 
-    # Tekst zawsze ciemny, pasujący do jasnego, pastelowego tła
-    kolor_tekstu = (35, 35, 35, 255) 
-
+    kolor_tekstu = (30, 30, 30, 255) 
     draw = ImageDraw.Draw(canvas)
-    
+
+    if logo:
+        poz_logo_x = prawa_krawedz_tekstu - logo.width
+        canvas.paste(logo, (poz_logo_x, y_tekstu), logo)
+        y_tekstu += logo.height + 15
+
     szer_gora = font_gora.getlength(tekst_gora) if hasattr(font_gora, 'getlength') else font_gora.getbbox(tekst_gora)[2]
-    draw.text((srodek_lewej_strony - (szer_gora // 2), y_tekstu), tekst_gora, fill=kolor_tekstu, font=font_gora)
+    draw.text((prawa_krawedz_tekstu - szer_gora, y_tekstu), tekst_gora, fill=kolor_tekstu, font=font_gora)
     
-    y_tekstu += 55
+    y_tekstu += 60 
     
     szer_dol = font_dol.getlength(tekst_dol) if hasattr(font_dol, 'getlength') else font_dol.getbbox(tekst_dol)[2]
-    draw.text((srodek_lewej_strony - (szer_dol // 2), y_tekstu), tekst_dol.upper(), fill=kolor_tekstu, font=font_dol)
+    draw.text((prawa_krawedz_tekstu - szer_dol, y_tekstu), tekst_dol.upper(), fill=kolor_tekstu, font=font_dol)
 
     canvas = canvas.convert("RGB")
     canvas.save(nazwa_wyjsciowa, quality=100)
@@ -675,9 +687,8 @@ with tab1:
 # ZAKŁADKA 2: COVER NA FB
 # ----------------------------------------------------
 with tab2:
-    st.info("💡 Ta zakładka wygeneruje dla Ciebie grafikę o wymiarach 1640x624 px z odpowiednim wyśrodkowaniem tekstu oraz wklejoną okładką po prawej stronie.")
+    st.info("💡 Ta zakładka wygeneruje dla Ciebie grafikę o wymiarach 1640x624 px z prawostronnym wyrównaniem tekstu i wklejoną okładką z cieniem po prawej stronie.")
     
-    # Wyszukiwanie domyślnego loga 'Czas na Wnętrze' dla covera
     cnw_logo_index = next((i for i, v in enumerate(dostepne_loga) if "czas" in v.lower() or "wnetrze" in v.lower()), 0)
     
     col1, col2 = st.columns(2)
@@ -698,7 +709,6 @@ with tab2:
                 
                 sciezka_do_logo_cover = None if wybrane_logo_cover == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo_cover)
                 
-                # Obliczanie koloru tła za pomocą nowej funkcji pastelowej
                 if kolor_reczny == "#E5D1D4": 
                     kolor_tla = kolor_pastelowy_ze_zdjecia(sciezka_okladki) 
                 else:
