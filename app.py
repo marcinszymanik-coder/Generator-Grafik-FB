@@ -80,12 +80,12 @@ SCIEZKA_FONT_SEMIBOLD = os.path.join(
 
 FONTY_DO_POBRANIA = {
     SCIEZKA_FONT_BOLD: (
-        "https://raw.githubusercontent.com/google/fonts/main/"
-        "ofl/montserrat/static/Montserrat-Bold.ttf"
+        "https://raw.githubusercontent.com/JulietaUla/"
+        "Montserrat/master/fonts/ttf/Montserrat-Bold.ttf"
     ),
     SCIEZKA_FONT_SEMIBOLD: (
-        "https://raw.githubusercontent.com/google/fonts/main/"
-        "ofl/montserrat/static/Montserrat-SemiBold.ttf"
+        "https://raw.githubusercontent.com/JulietaUla/"
+        "Montserrat/master/fonts/ttf/Montserrat-SemiBold.ttf"
     ),
 }
 
