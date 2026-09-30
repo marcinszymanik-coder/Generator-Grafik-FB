@@ -22,8 +22,8 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Domyślny tekst stopki (wersje "bez komentarza" dostają pusty string)
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
-# Znacznik wersji - widoczny w aplikacji, żeby od razu wiedzieć, czy działa podmieniony plik
-WERSJA_APP = "3.1 – obsługa mniejszego podtytułu (użyj znaku |)"
+# Znacznik wersji
+WERSJA_APP = "4.0 – obsługa mniejszego podtytułu oraz generator Coverów FB"
 
 # ==========================================
 # FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
@@ -31,17 +31,18 @@ WERSJA_APP = "3.1 – obsługa mniejszego podtytułu (użyj znaku |)"
 def aktualizuj_licznik(styl_grafiki, uzyte_logo):
     nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
     
-    # Pobieramy czas z uwzględnieniem polskiej strefy czasowej (letni/zimowy)
+    # Pobieramy czas z uwzględnieniem polskiej strefy czasowej
     teraz = datetime.datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%Y-%m-%d %H:%M:%S")
     
     try:
-        creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
-        gc = gspread.service_account_from_dict(creds_json)
-        sh = gc.open("Statystyki_Grafik_FB")
-        worksheet = sh.sheet1
-        
-        worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
-        print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
+        if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
+            creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
+            gc = gspread.service_account_from_dict(creds_json)
+            sh = gc.open("Statystyki_Grafik_FB")
+            worksheet = sh.sheet1
+            
+            worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
+            print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
     except Exception as e:
         print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
 
@@ -246,13 +247,12 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
         canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
 
-    # Przygotowanie tekstów i rozmiarów (obsługa znaku podziału |)
     czesci_tytulu = tekst_glowny.split('|')
     tekst_duzy = czesci_tytulu[0].strip()
     tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
 
     rozmiar_fontu = 46 if len(tekst_duzy) > 50 else 55
-    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65) # Proporcjonalnie mniejszy font
+    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65) 
     
     try:
         font_duzy = ImageFont.truetype("Montserrat-Bold.ttf", rozmiar_fontu)
@@ -262,7 +262,6 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
 
     kolor_biel = (255, 255, 255, 255)
     
-    # Zawijanie linii i wyliczanie wysokości bloku
     linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 140)
     wysokosc_linii = rozmiar_fontu + 16
     
@@ -271,23 +270,20 @@ def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_s
     if tekst_maly:
         linie_male = zawin_tekst(tekst_maly.upper(), font_maly, szerokosc - 140)
 
-    # Obliczenie pełnej wysokości obu tekstów dla idealnego wyśrodkowania
     calkowita_wysokosc = (len(linie_glowne) * wysokosc_linii)
     if tekst_maly:
-        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male) # +20px przerwy między tytułami
+        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male) 
 
     y_tekstu_poczatkowy = (wysokosc - 280) - (calkowita_wysokosc / 2)
 
     with Pilmoji(canvas) as pilmoji:
-        # Rysowanie dużej części
         for linia in linie_glowne:
             szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        # Rysowanie małej części, jeśli istnieje
         if tekst_maly:
-            y_tekstu_poczatkowy += 20 # Przerwa
+            y_tekstu_poczatkowy += 20
             for linia in linie_male:
                 szer_linii = font_maly.getlength(linia) if hasattr(font_maly, 'getlength') else font_maly.getbbox(linia)[2]
                 pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_maly)
@@ -355,7 +351,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
         logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
         canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
 
-    # Przygotowanie tekstów i rozmiarów (obsługa znaku podziału |)
     czesci_tytulu = tekst_glowny.split('|')
     tekst_duzy = czesci_tytulu[0].strip()
     tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
@@ -371,7 +366,6 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
 
     kolor_biel = (255, 255, 255, 255)
     
-    # Zawijanie linii i wyliczanie wysokości bloku
     linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 100)
     wysokosc_linii = rozmiar_fontu + 15
 
@@ -387,13 +381,11 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     y_tekstu_poczatkowy = (wys_zdjecia + ((wysokosc - wys_zdjecia) / 2)) - (calkowita_wysokosc / 2) - 20 
 
     with Pilmoji(canvas) as pilmoji:
-        # Rysowanie dużej części
         for linia in linie_glowne:
             szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
             pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
             y_tekstu_poczatkowy += wysokosc_linii
 
-        # Rysowanie małej części, jeśli istnieje
         if tekst_maly:
             y_tekstu_poczatkowy += 20
             for linia in linie_male:
@@ -414,8 +406,67 @@ def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_sto
     canvas = canvas.convert("RGB") 
     canvas.save(nazwa_wyjsciowa, quality=100)
 
+
 # ==========================================
-# GENEROWANIE WSZYSTKICH WARIANTÓW
+# GENERATOR 3: COVER NA FB (NOWOŚĆ)
+# ==========================================
+def generuj_cover_fb(sciezka_okladki, sciezka_logo, tekst_gora, tekst_dol, nazwa_wyjsciowa, kolor_tla):
+    szerokosc, wysokosc = 1640, 624 
+    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla + (255,))
+    
+    # 1. Wklejanie okładki magazynu (prawa strona)
+    if sciezka_okladki and os.path.exists(sciezka_okladki):
+        okladka = Image.open(sciezka_okladki).convert("RGBA")
+        docelowa_wys = wysokosc - 80
+        wspolczynnik = docelowa_wys / okladka.height
+        docelowa_szer = int(okladka.width * wspolczynnik)
+        okladka = okladka.resize((docelowa_szer, docelowa_wys), Image.Resampling.LANCZOS)
+        
+        pozycja_x_okladki = szerokosc - docelowa_szer - 100
+        pozycja_y_okladki = 40
+        canvas.paste(okladka, (pozycja_x_okladki, pozycja_y_okladki))
+    else:
+        pozycja_x_okladki = szerokosc - 400 # domyślnie gdyby nie było okładki
+
+    # 2. Dodawanie Logo
+    y_tekstu = 150
+    srodek_lewej_strony = pozycja_x_okladki // 2
+
+    if sciezka_logo and os.path.exists(sciezka_logo):
+        logo = Image.open(sciezka_logo).convert("RGBA")
+        logo.thumbnail((500, 200), Image.Resampling.LANCZOS)
+        poz_logo_x = srodek_lewej_strony - (logo.width // 2)
+        canvas.paste(logo, (poz_logo_x, y_tekstu), logo)
+        y_tekstu += logo.height + 40
+    else:
+        y_tekstu += 100
+
+    # 3. Dodawanie tekstów
+    try:
+        font_gora = ImageFont.truetype("Montserrat-SemiBold.ttf", 45)
+        font_dol = ImageFont.truetype("Montserrat-Bold.ttf", 60)
+    except Exception:
+        return
+
+    jasnosc_tla = (kolor_tla[0] * 299 + kolor_tla[1] * 587 + kolor_tla[2] * 114) / 1000
+    kolor_tekstu = (255, 255, 255, 255) if jasnosc_tla < 130 else (30, 30, 30, 255)
+
+    draw = ImageDraw.Draw(canvas)
+    
+    szer_gora = font_gora.getlength(tekst_gora) if hasattr(font_gora, 'getlength') else font_gora.getbbox(tekst_gora)[2]
+    draw.text((srodek_lewej_strony - (szer_gora // 2), y_tekstu), tekst_gora, fill=kolor_tekstu, font=font_gora)
+    
+    y_tekstu += 65
+    
+    szer_dol = font_dol.getlength(tekst_dol) if hasattr(font_dol, 'getlength') else font_dol.getbbox(tekst_dol)[2]
+    draw.text((srodek_lewej_strony - (szer_dol // 2), y_tekstu), tekst_dol.upper(), fill=kolor_tekstu, font=font_dol)
+
+    canvas = canvas.convert("RGB")
+    canvas.save(nazwa_wyjsciowa, quality=100)
+
+
+# ==========================================
+# GENEROWANIE WSZYSTKICH WARIANTÓW (POSTY)
 # ==========================================
 WARIANTY = {
     "magazyn":       ("magazyn.jpg",       "magazyn", STOPKA_DOMYSLNA, False),
@@ -460,7 +511,7 @@ def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio, kolor_w
 st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
 
 st.title("🎨 Automatyczny Generator Grafik")
-st.write("Wklej link, zobacz gotowe grafiki, a potem edytuj tekst, dodawaj emotikony 🔥 i pobieraj!")
+st.write("Wybierz rodzaj grafiki, którą chcesz stworzyć w zakładkach poniżej.")
 st.caption(f"wersja {WERSJA_APP}")
 
 pobierz_nowoczesne_czcionki()
@@ -487,8 +538,14 @@ else:
 if 'wygenerowano' not in st.session_state:
     st.session_state.wygenerowano = False
 
-with st.container():
-    wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga)
+
+tab1, tab2 = st.tabs(["📲 Posty do artykułu", "🖼️ Cover na Facebooka (Top)"])
+
+# ----------------------------------------------------
+# ZAKŁADKA 1: POSTY Z LINKU
+# ----------------------------------------------------
+with tab1:
+    wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga, key="logo_posty")
     url_input = st.text_input("🔗 Link do artykułu:")
     
     if st.button("🚀 Pobierz i Generuj Grafiki", type="primary"):
@@ -516,84 +573,131 @@ with st.container():
         else:
             st.warning("Najpierw wklej link!")
 
-if st.session_state.get('wygenerowano', False):
-    bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
-    st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
-    
-    def pokaz_pare(klucze):
-        kolumny = st.columns(2)
-        for kolumna, klucz in zip(kolumny, klucze):
-            podpis, etykieta, nazwa_pliku, nazwa_statystyki = KARTY[klucz]
-            with kolumna:
-                st.image(st.session_state.grafiki[klucz], caption=podpis)
-                st.download_button(
-                    label=etykieta,
-                    data=st.session_state.grafiki[klucz],
-                    file_name=nazwa_pliku,
-                    mime="image/jpeg",
-                    width="stretch",
-                    key=f"pobierz_{klucz}",
-                    on_click=aktualizuj_licznik,
-                    args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
-                )
+    if st.session_state.get('wygenerowano', False):
+        bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
+        st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
+        
+        def pokaz_pare(klucze):
+            kolumny = st.columns(2)
+            for kolumna, klucz in zip(kolumny, klucze):
+                podpis, etykieta, nazwa_pliku, nazwa_statystyki = KARTY[klucz]
+                with kolumna:
+                    st.image(st.session_state.grafiki[klucz], caption=podpis)
+                    st.download_button(
+                        label=etykieta,
+                        data=st.session_state.grafiki[klucz],
+                        file_name=nazwa_pliku,
+                        mime="image/jpeg",
+                        width="stretch",
+                        key=f"pobierz_{klucz}",
+                        on_click=aktualizuj_licznik,
+                        args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
+                    )
 
-    z_komentarzem = st.toggle(
-        "Napis „ARTYKUŁ W KOMENTARZU”",
-        value=True,
-        help="Wyłącz, żeby te same 4 grafiki pokazały się w wersji bez stopki."
-    )
-    sufiks = "" if z_komentarzem else "_bez"
+        z_komentarzem = st.toggle(
+            "Napis „ARTYKUŁ W KOMENTARZU”",
+            value=True,
+            help="Wyłącz, żeby te same 4 grafiki pokazały się w wersji bez stopki."
+        )
+        sufiks = "" if z_komentarzem else "_bez"
 
-    st.subheader("🎨 Kolor ze zdjęcia")
-    st.caption("Podlewka w kolorze wyliczonym z całego zdjęcia (ważonym powierzchnią). Zdjęcie bez wyraźnej barwy – np. szara łazienka – da ciemny grafit, a nie przypadkowy kolor.")
-    pokaz_pare([f"magazyn_kolor{sufiks}", f"split_kolor{sufiks}"])
+        st.subheader("🎨 Kolor ze zdjęcia")
+        st.caption("Podlewka w kolorze wyliczonym z całego zdjęcia (ważonym powierzchnią). Zdjęcie bez wyraźnej barwy – np. szara łazienka – da ciemny grafit, a nie przypadkowy kolor.")
+        pokaz_pare([f"magazyn_kolor{sufiks}", f"split_kolor{sufiks}"])
 
-    kolor_uzyty = st.session_state.get('kolor_uzyty')
-    if kolor_uzyty:
-        hex_uzyty = "#{:02x}{:02x}{:02x}".format(*kolor_uzyty)
-        with st.expander(f"🎚️ Kolor podlewki: {hex_uzyty} – zmień ręcznie"):
-            st.caption("Wybrany kolor i tak zostanie przyciemniony do poziomu, przy którym biały napis pozostaje czytelny.")
-            nowy_kolor = st.color_picker("Wybierz kolor:", value=hex_uzyty)
-            kol_a, kol_b = st.columns(2)
+        kolor_uzyty = st.session_state.get('kolor_uzyty')
+        if kolor_uzyty:
+            hex_uzyty = "#{:02x}{:02x}{:02x}".format(*kolor_uzyty)
+            with st.expander(f"🎚️ Kolor podlewki: {hex_uzyty} – zmień ręcznie"):
+                st.caption("Wybrany kolor i tak zostanie przyciemniony do poziomu, przy którym biały napis pozostaje czytelny.")
+                nowy_kolor = st.color_picker("Wybierz kolor:", value=hex_uzyty)
+                kol_a, kol_b = st.columns(2)
 
-            def przelicz(kolor_wymuszony):
-                st.session_state.kolor_reczny = kolor_wymuszony
+                def przelicz(kolor_wymuszony):
+                    st.session_state.kolor_reczny = kolor_wymuszony
+                    st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
+                        st.session_state.sciezka_zdjecia_tmp,
+                        st.session_state.sciezka_do_logo,
+                        st.session_state.aktualny_tytul,
+                        st.session_state.is_audio_brand,
+                        kolor_wymuszony=kolor_wymuszony
+                    )
+
+                if kol_a.button("🎨 Zastosuj ten kolor", width="stretch"):
+                    with st.spinner("Przeliczam..."):
+                        przelicz(tuple(int(nowy_kolor.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)))
+                    st.rerun()
+
+                if kol_b.button("↩️ Wróć do koloru ze zdjęcia", width="stretch"):
+                    with st.spinner("Przeliczam..."):
+                        przelicz(None)
+                    st.rerun()
+
+        st.markdown("---")
+        st.subheader("⬛ Klasyczne, czarne")
+        pokaz_pare([f"magazyn{sufiks}", f"split{sufiks}"])
+
+        st.markdown("---")
+        st.subheader("✍️ Chcesz coś poprawić?")
+        
+        nowy_tytul = st.text_area("Edytuj tytuł (użyj Enter by złamać linię. Wstaw znak '|', by tekst po nim był mniejszym podtytułem):", value=st.session_state.aktualny_tytul, height=100)
+        
+        if st.button("🔄 Zaktualizuj napisy"):
+            with st.spinner("Odświeżam grafiki..."):
                 st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
                     st.session_state.sciezka_zdjecia_tmp,
                     st.session_state.sciezka_do_logo,
-                    st.session_state.aktualny_tytul,
+                    nowy_tytul,
                     st.session_state.is_audio_brand,
-                    kolor_wymuszony=kolor_wymuszony
+                    kolor_wymuszony=st.session_state.get('kolor_reczny')
                 )
-
-            if kol_a.button("🎨 Zastosuj ten kolor", width="stretch"):
-                with st.spinner("Przeliczam..."):
-                    przelicz(tuple(int(nowy_kolor.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)))
+                st.session_state.aktualny_tytul = nowy_tytul
                 st.rerun()
 
-            if kol_b.button("↩️ Wróć do koloru ze zdjęcia", width="stretch"):
-                with st.spinner("Przeliczam..."):
-                    przelicz(None)
-                st.rerun()
-
-    st.markdown("---")
-    st.subheader("⬛ Klasyczne, czarne")
-    pokaz_pare([f"magazyn{sufiks}", f"split{sufiks}"])
-
-    st.markdown("---")
-    st.subheader("✍️ Chcesz coś poprawić?")
+# ----------------------------------------------------
+# ZAKŁADKA 2: COVER NA FB
+# ----------------------------------------------------
+with tab2:
+    st.info("💡 Ta zakładka wygeneruje dla Ciebie grafikę o wymiarach 1640x624 px z odpowiednim wyśrodkowaniem tekstu oraz wklejoną okładką po prawej stronie.")
     
-    # Zaktualizowana podpowiedź tłumacząca użycie znaku |
-    nowy_tytul = st.text_area("Edytuj tytuł (użyj Enter by złamać linię. Wstaw znak '|', by tekst po nim był mniejszym podtytułem):", value=st.session_state.aktualny_tytul, height=100)
-    
-    if st.button("🔄 Zaktualizuj napisy"):
-        with st.spinner("Odświeżam grafiki..."):
-            st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
-                st.session_state.sciezka_zdjecia_tmp,
-                st.session_state.sciezka_do_logo,
-                nowy_tytul,
-                st.session_state.is_audio_brand,
-                kolor_wymuszony=st.session_state.get('kolor_reczny')
-            )
-            st.session_state.aktualny_tytul = nowy_tytul
-            st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        wybrane_logo_cover = st.selectbox("Wybierz logo:", dostepne_loga, key="logo_cover")
+        wgrana_okladka = st.file_uploader("Wgraj plik okładki (JPG/PNG):", type=['jpg', 'jpeg', 'png'])
+    with col2:
+        tekst_gora = st.text_input("Tekst górny:", value="Najnowsze wydanie już dostępne")
+        tekst_dol = st.text_input("Tekst dolny (np. data):", value="PAŹDZIERNIK 2026")
+        kolor_reczny = st.color_picker("Wymuś kolor tła (zostaw domyślny, aby pobrać z okładki):", value="#E5D1D4")
+
+    if st.button("🎨 Generuj Cover", type="primary"):
+        if wgrana_okladka is not None:
+            with st.spinner("Przetwarzam cover..."):
+                sciezka_okladki = "tymczasowa_okladka.jpg"
+                with open(sciezka_okladki, "wb") as f:
+                    f.write(wgrana_okladka.getbuffer())
+                
+                sciezka_do_logo_cover = None if wybrane_logo_cover == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo_cover)
+                
+                # Obliczanie koloru tła 
+                if kolor_reczny == "#E5D1D4": 
+                    kolor_tla = kolor_podkladu_ze_zdjecia(sciezka_okladki, maks_nasycenie=0.3) 
+                    if not kolor_tla:
+                        kolor_tla = (245, 235, 240) # Fallback, np. przy problemach z otwarciem obrazka
+                else:
+                    kolor_tla = tuple(int(kolor_reczny.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+
+                nazwa_covera = "wygenerowany_cover.jpg"
+                generuj_cover_fb(sciezka_okladki, sciezka_do_logo_cover, tekst_gora, tekst_dol, nazwa_covera, kolor_tla)
+                
+                st.success("Cover wygenerowany pomyślnie!")
+                st.image(nazwa_covera, use_column_width=True)
+                
+                with open(nazwa_covera, "rb") as file:
+                    st.download_button(
+                        label="📥 Pobierz Cover",
+                        data=file,
+                        file_name="Cover_FB.jpg",
+                        mime="image/jpeg"
+                    )
+        else:
+            st.warning("Najpierw wgraj plik z okładką!")
