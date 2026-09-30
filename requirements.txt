@@ -1,7 +1,7 @@
-streamlit
-requests
-beautifulsoup4
-Pillow
-gspread
-google-auth
-pilmoji
+streamlit>=1.42
+requests>=2.31
+beautifulsoup4>=4.12
+Pillow>=10.4
+gspread>=6.1
+google-auth>=2.35
+pilmoji>=2.0
