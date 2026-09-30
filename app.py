@@ -1967,7 +1967,7 @@ def generuj_cover_fb(
 
     tekst_gora = (
         tekst_gora.strip()
-        or "Nowy numer już dostępny"
+        or "Do kupienia stacjonarnie oraz UlubionyKiosk.pl"
     )
 
     (
