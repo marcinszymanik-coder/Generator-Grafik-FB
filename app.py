@@ -1,731 +1,2437 @@
 import os
-import urllib.request
-import ssl
-import requests
-from io import BytesIO
-from urllib.parse import urljoin
-from bs4 import BeautifulSoup
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
-import streamlit as st
-import datetime
-from zoneinfo import ZoneInfo
 import json
-import gspread 
-import colorsys
 import math
+import socket
+import ipaddress
+import colorsys
+import datetime
+from io import BytesIO
+from urllib.parse import urljoin, urlparse
 
-from pilmoji import Pilmoji 
+import requests
+import gspread
+import streamlit as st
 
-# Wyłączenie weryfikacji certyfikatów SSL
-ssl._create_default_https_context = ssl._create_unverified_context
+from bs4 import BeautifulSoup
+from zoneinfo import ZoneInfo
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageFont,
+    ImageEnhance,
+    ImageFilter,
+    ImageOps,
+)
 
-# Domyślny tekst stopki (wersje "bez komentarza" dostają pusty string)
+try:
+    from pilmoji import Pilmoji
+    PILMOJI_DOSTEPNE = True
+except ImportError:
+    PILMOJI_DOSTEPNE = False
+
+
+# ============================================================
+# KONFIGURACJA
+# ============================================================
+
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
-# Znacznik wersji
-WERSJA_APP = "4.3 – Cover z cieniem, wyrównaniem do prawej i powiększonym logiem"
+WERSJA_APP = (
+    "5.0 – bezpieczne pobieranie, generowanie w pamięci "
+    "i nowoczesny cover FB"
+)
 
-# ==========================================
-# FUNKCJA ANALITYCZNA (Zapis do Arkuszy Google w tle)
-# ==========================================
-def aktualizuj_licznik(styl_grafiki, uzyte_logo):
-    nazwa_marki = uzyte_logo if uzyte_logo else "BRAK LOGA"
-    
-    # Pobieramy czas z uwzględnieniem polskiej strefy czasowej
-    teraz = datetime.datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%Y-%m-%d %H:%M:%S")
-    
-    try:
-        if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
-            creds_json = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
-            gc = gspread.service_account_from_dict(creds_json)
-            sh = gc.open("Statystyki_Grafik_FB")
-            worksheet = sh.sheet1
-            
-            worksheet.append_row([teraz, styl_grafiki, nazwa_marki])
-            print(f"✅ [SUKCES] Zapisano do Arkuszy: {styl_grafiki} | {nazwa_marki}")
-    except Exception as e:
-        print(f"❌ [BŁĄD ZAPISU DO ARKUSZA]: {e}")
+SZEROKOSC_POSTA = 1080
+WYSOKOSC_POSTA = 1080
 
-# ==========================================
-# FUNKCJE BAZOWE
-# ==========================================
-def wyczysc_tytul_portalu(tytul_surowy):
-    smieci = [
-        "- budujemydom.pl", "- budujemydom", "| budujemydom.pl", "- Budujemy Dom", "- BudujemyDom",
-        "- czasnawnetrze.pl", "- czasnawnetrze", "| czasnawnetrze.pl", "- Czas na Wnętrze",
-        "- audio.com.pl", "- audio", "| audio.com.pl", "- Testy, ceny", "- Test"
+SZEROKOSC_COVERA = 1640
+WYSOKOSC_COVERA = 720
+
+MAKS_ROZMIAR_HTML = 5 * 1024 * 1024
+MAKS_ROZMIAR_OBRAZU = 25 * 1024 * 1024
+MAKS_LICZBA_PIKSELI = 45_000_000
+
+Image.MAX_IMAGE_PIXELS = MAKS_LICZBA_PIKSELI
+
+NAGLOWKI_HTTP = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.7",
+}
+
+KATALOG_FONTOW = os.path.join("assets", "fonts")
+
+SCIEZKA_FONT_BOLD = os.path.join(
+    KATALOG_FONTOW,
+    "Montserrat-Bold.ttf",
+)
+
+SCIEZKA_FONT_SEMIBOLD = os.path.join(
+    KATALOG_FONTOW,
+    "Montserrat-SemiBold.ttf",
+)
+
+FONTY_DO_POBRANIA = {
+    SCIEZKA_FONT_BOLD: (
+        "https://raw.githubusercontent.com/google/fonts/main/"
+        "ofl/montserrat/static/Montserrat-Bold.ttf"
+    ),
+    SCIEZKA_FONT_SEMIBOLD: (
+        "https://raw.githubusercontent.com/google/fonts/main/"
+        "ofl/montserrat/static/Montserrat-SemiBold.ttf"
+    ),
+}
+
+
+# ============================================================
+# NARZĘDZIA POMOCNICZE
+# ============================================================
+
+def ogranicz(wartosc, minimum, maksimum):
+    return max(minimum, min(maksimum, wartosc))
+
+
+def hex_na_rgb(kolor_hex):
+    kolor_hex = kolor_hex.strip().lstrip("#")
+
+    if len(kolor_hex) != 6:
+        raise ValueError("Kolor musi mieć format #RRGGBB.")
+
+    return tuple(
+        int(kolor_hex[i:i + 2], 16)
+        for i in (0, 2, 4)
+    )
+
+
+def rgb_na_hex(rgb):
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+def mieszaj_kolory(kolor_a, kolor_b, udzial_b):
+    udzial_b = ogranicz(udzial_b, 0.0, 1.0)
+    udzial_a = 1.0 - udzial_b
+
+    return tuple(
+        int(kolor_a[i] * udzial_a + kolor_b[i] * udzial_b)
+        for i in range(3)
+    )
+
+
+def luminancja_koloru(rgb):
+    def kanal(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = [kanal(v) for v in rgb]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def kolor_tekstu_dla_tla(rgb):
+    if luminancja_koloru(rgb) > 0.42:
+        return (26, 26, 30, 255)
+
+    return (255, 255, 255, 255)
+
+
+def kolor_drugoplanowy(kolor_glowny):
+    if kolor_glowny[:3] == (255, 255, 255):
+        return (55, 55, 62, 255)
+
+    return (225, 225, 230, 255)
+
+
+def pobierz_czcionke(sciezka, rozmiar):
+    return ImageFont.truetype(sciezka, rozmiar)
+
+
+def szerokosc_tekstu(font, tekst):
+    if hasattr(font, "getlength"):
+        return font.getlength(tekst)
+
+    bbox = font.getbbox(tekst)
+    return bbox[2] - bbox[0]
+
+
+def wysokosc_tekstu(font, tekst="Ag"):
+    bbox = font.getbbox(tekst)
+    return bbox[3] - bbox[1]
+
+
+def obraz_do_jpeg_bytes(obraz, jakosc=95):
+    bufor = BytesIO()
+
+    obraz.convert("RGB").save(
+        bufor,
+        format="JPEG",
+        quality=jakosc,
+        optimize=True,
+        subsampling=0,
+    )
+
+    bufor.seek(0)
+    return bufor.getvalue()
+
+
+def wczytaj_obraz(zrodlo):
+    if zrodlo is None:
+        return None
+
+    if isinstance(zrodlo, Image.Image):
+        obraz = zrodlo.copy()
+
+    elif isinstance(zrodlo, (bytes, bytearray)):
+        obraz = Image.open(BytesIO(zrodlo))
+
+    elif hasattr(zrodlo, "read"):
+        dane = zrodlo.read()
+
+        try:
+            zrodlo.seek(0)
+        except Exception:
+            pass
+
+        obraz = Image.open(BytesIO(dane))
+
+    elif isinstance(zrodlo, str):
+        obraz = Image.open(zrodlo)
+
+    else:
+        raise TypeError("Nieobsługiwany typ źródła obrazu.")
+
+    obraz.load()
+    obraz = ImageOps.exif_transpose(obraz)
+
+    if obraz.width * obraz.height > MAKS_LICZBA_PIKSELI:
+        raise ValueError(
+            "Obraz ma zbyt dużą rozdzielczość. "
+            f"Maksymalnie {MAKS_LICZBA_PIKSELI:,} pikseli."
+        )
+
+    return obraz.convert("RGBA")
+
+
+def kadruj_cover(obraz, szerokosc, wysokosc):
+    obraz = obraz.convert("RGBA")
+
+    proporcja_docelowa = szerokosc / wysokosc
+    proporcja_obrazu = obraz.width / obraz.height
+
+    if proporcja_obrazu > proporcja_docelowa:
+        nowa_szerokosc = int(obraz.height * proporcja_docelowa)
+        lewy = (obraz.width - nowa_szerokosc) // 2
+        obraz = obraz.crop(
+            (
+                lewy,
+                0,
+                lewy + nowa_szerokosc,
+                obraz.height,
+            )
+        )
+    else:
+        nowa_wysokosc = int(obraz.width / proporcja_docelowa)
+        gora = (obraz.height - nowa_wysokosc) // 2
+        obraz = obraz.crop(
+            (
+                0,
+                gora,
+                obraz.width,
+                gora + nowa_wysokosc,
+            )
+        )
+
+    return obraz.resize(
+        (szerokosc, wysokosc),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def dopasuj_contain(obraz, szerokosc, wysokosc):
+    obraz = obraz.copy()
+    obraz.thumbnail(
+        (szerokosc, wysokosc),
+        Image.Resampling.LANCZOS,
+    )
+    return obraz
+
+
+# ============================================================
+# FONTY
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
+def przygotuj_czcionki():
+    os.makedirs(KATALOG_FONTOW, exist_ok=True)
+
+    bledy = []
+
+    for sciezka, url in FONTY_DO_POBRANIA.items():
+        if os.path.exists(sciezka) and os.path.getsize(sciezka) > 10_000:
+            continue
+
+        try:
+            odpowiedz = requests.get(
+                url,
+                timeout=(5, 30),
+            )
+            odpowiedz.raise_for_status()
+
+            if len(odpowiedz.content) < 10_000:
+                raise ValueError("Pobrany plik fontu jest zbyt mały.")
+
+            with open(sciezka, "wb") as plik:
+                plik.write(odpowiedz.content)
+
+        except Exception as blad:
+            bledy.append(f"{os.path.basename(sciezka)}: {blad}")
+
+    brakujace = [
+        sciezka
+        for sciezka in FONTY_DO_POBRANIA
+        if not os.path.exists(sciezka)
     ]
+
+    if brakujace:
+        szczegoly = "; ".join(bledy)
+        raise RuntimeError(
+            "Nie udało się przygotować fontów Montserrat. "
+            "Dodaj je ręcznie do katalogu assets/fonts. "
+            f"Szczegóły: {szczegoly}"
+        )
+
+    return True
+
+
+# ============================================================
+# BEZPIECZNE POBIERANIE URL
+# ============================================================
+
+def sprawdz_publiczny_url(url):
+    try:
+        parsed = urlparse(url)
+    except Exception as blad:
+        raise ValueError(f"Nieprawidłowy adres URL: {blad}")
+
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Dozwolone są wyłącznie adresy HTTP i HTTPS.")
+
+    if not parsed.hostname:
+        raise ValueError("Adres URL nie zawiera prawidłowej domeny.")
+
+    if parsed.username or parsed.password:
+        raise ValueError("Adres URL nie może zawierać loginu ani hasła.")
+
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("Adres URL zawiera nieprawidłowy port.")
+
+    if port not in (None, 80, 443):
+        raise ValueError("Dozwolone są wyłącznie porty 80 i 443.")
+
+    try:
+        rekordy = socket.getaddrinfo(
+            parsed.hostname,
+            port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror:
+        raise ValueError("Nie udało się odnaleźć domeny.")
+
+    if not rekordy:
+        raise ValueError("Domena nie zwróciła żadnego adresu IP.")
+
+    for rekord in rekordy:
+        adres_ip = rekord[4][0].split("%")[0]
+        ip = ipaddress.ip_address(adres_ip)
+
+        if not ip.is_global:
+            raise ValueError(
+                "Adres prowadzi do sieci lokalnej lub zastrzeżonej."
+            )
+
+    return True
+
+
+def bezpieczne_pobranie(
+    url,
+    maks_rozmiar,
+    oczekiwany_typ=None,
+    maks_przekierowan=5,
+):
+    aktualny_url = url
+
+    for _ in range(maks_przekierowan + 1):
+        sprawdz_publiczny_url(aktualny_url)
+
+        odpowiedz = requests.get(
+            aktualny_url,
+            headers=NAGLOWKI_HTTP,
+            timeout=(7, 25),
+            stream=True,
+            allow_redirects=False,
+        )
+
+        if odpowiedz.status_code in (301, 302, 303, 307, 308):
+            lokalizacja = odpowiedz.headers.get("Location")
+
+            if not lokalizacja:
+                raise ValueError(
+                    "Serwer zwrócił przekierowanie bez adresu docelowego."
+                )
+
+            aktualny_url = urljoin(aktualny_url, lokalizacja)
+            continue
+
+        odpowiedz.raise_for_status()
+
+        content_type = (
+            odpowiedz.headers
+            .get("Content-Type", "")
+            .split(";")[0]
+            .strip()
+            .lower()
+        )
+
+        if oczekiwany_typ == "html":
+            dozwolone = {
+                "text/html",
+                "application/xhtml+xml",
+                "application/xml",
+                "text/xml",
+                "",
+            }
+
+            if content_type not in dozwolone:
+                raise ValueError(
+                    f"Adres nie zwrócił strony HTML: {content_type}"
+                )
+
+        if oczekiwany_typ == "image":
+            if content_type and not content_type.startswith("image/"):
+                raise ValueError(
+                    f"Adres nie zwrócił obrazu: {content_type}"
+                )
+
+        dlugosc = odpowiedz.headers.get("Content-Length")
+
+        if dlugosc:
+            try:
+                if int(dlugosc) > maks_rozmiar:
+                    raise ValueError("Pobierany plik jest zbyt duży.")
+            except ValueError as blad:
+                if str(blad) == "Pobierany plik jest zbyt duży.":
+                    raise
+
+        fragmenty = []
+        pobrano = 0
+
+        for fragment in odpowiedz.iter_content(chunk_size=64 * 1024):
+            if not fragment:
+                continue
+
+            pobrano += len(fragment)
+
+            if pobrano > maks_rozmiar:
+                raise ValueError("Pobierany plik przekroczył limit rozmiaru.")
+
+            fragmenty.append(fragment)
+
+        return b"".join(fragmenty), aktualny_url, content_type
+
+    raise ValueError("Adres zawiera zbyt wiele przekierowań.")
+
+
+# ============================================================
+# POBIERANIE ARTYKUŁU
+# ============================================================
+
+def wyczysc_tytul_portalu(tytul_surowy):
+    if not tytul_surowy:
+        return "BRAK TYTUŁU"
+
+    smieci = [
+        "- budujemydom.pl",
+        "- budujemydom",
+        "| budujemydom.pl",
+        "- Budujemy Dom",
+        "- BudujemyDom",
+        "- czasnawnetrze.pl",
+        "- czasnawnetrze",
+        "| czasnawnetrze.pl",
+        "- Czas na Wnętrze",
+        "- audio.com.pl",
+        "- audio",
+        "| audio.com.pl",
+        "- Testy, ceny",
+        "- Test",
+    ]
+
     tytul_czysty = tytul_surowy.strip()
-    for s in smieci:
-        if tytul_czysty.lower().endswith(s.lower()):
-            tytul_czysty = tytul_czysty[:-len(s)].strip()
+
+    for smiec in smieci:
+        if tytul_czysty.lower().endswith(smiec.lower()):
+            tytul_czysty = tytul_czysty[:-len(smiec)].strip()
+
     return tytul_czysty.strip("- – |").strip()
 
-def pobierz_dane_z_artykulu(url):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-    }
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        tytul = "BRAK TYTUŁU"
-        og_title = soup.find('meta', property='og:title')
-        if og_title and og_title.get('content'):
-            tytul = wyczysc_tytul_portalu(og_title.get('content'))
-        else:
-            if soup.title:
-                tytul = wyczysc_tytul_portalu(soup.title.string)
 
-        img_url = None
-        og_image = soup.find('meta', property='og:image')
-        if og_image and og_image.get('content'):
-            img_url = og_image.get('content')
+def znajdz_adres_zdjecia(soup, url_artykulu):
+    kandydaci = []
 
-        linki_zdjec = []
-        for tag in soup.find_all(['source', 'img']):
-            srcset = tag.get('srcset')
-            if srcset:
-                for czesc in srcset.split(','):
-                    podzial = czesc.strip().split()
-                    if podzial: linki_zdjec.append(podzial[0])
-            src = tag.get('src')
-            if src: linki_zdjec.append(src) 
+    og_image = soup.find("meta", property="og:image")
 
-        najlepszy_strzal = None
-        for link in linki_zdjec:
-            if "/i/" in link and "1050x0" in link:
-                najlepszy_strzal = link
-                break
-        
-        if najlepszy_strzal:
-            img_url = najlepszy_strzal
+    if og_image and og_image.get("content"):
+        kandydaci.append(og_image.get("content"))
 
-        nazwa_zdjecia = None
-        if img_url:
-            img_url = urljoin(url, img_url) 
-            img_data = requests.get(img_url, headers=headers, timeout=10).content
-            obrazek_w_pamieci = Image.open(BytesIO(img_data))
-            czysty_obrazek_rgb = obrazek_w_pamieci.convert('RGB')
-            nazwa_zdjecia = "tymczasowe_zdjecie.jpg"
-            czysty_obrazek_rgb.save(nazwa_zdjecia, format='JPEG', quality=100)
-        
-        return tytul, nazwa_zdjecia
-    except Exception as e:
-        return None, None
+    twitter_image = soup.find(
+        "meta",
+        attrs={"name": "twitter:image"},
+    )
 
-def pobierz_nowoczesne_czcionki():
-    czcionki = {
-        "Montserrat-Bold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Bold.ttf",
-        "Montserrat-SemiBold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBold.ttf"
-    }
-    for nazwa_pliku, url in czcionki.items():
-        if not os.path.exists(nazwa_pliku):
-            try: urllib.request.urlretrieve(url, nazwa_pliku)
-            except Exception: pass
+    if twitter_image and twitter_image.get("content"):
+        kandydaci.append(twitter_image.get("content"))
 
-def zawin_tekst(tekst, font, max_szerokosc):
-    linie_ostateczne = []
-    akapity = tekst.split('\n')
-    
-    for akapit in akapity:
-        slowa = akapit.split()
-        if not slowa:
-            linie_ostateczne.append("") 
+    znalezione_1050 = []
+
+    for tag in soup.find_all(["source", "img"]):
+        srcset = tag.get("srcset")
+
+        if srcset:
+            for czesc in srcset.split(","):
+                elementy = czesc.strip().split()
+
+                if elementy:
+                    adres = elementy[0]
+
+                    if "/i/" in adres and "1050x0" in adres:
+                        znalezione_1050.append(adres)
+                    else:
+                        kandydaci.append(adres)
+
+        for atrybut in ("src", "data-src", "data-lazy-src"):
+            adres = tag.get(atrybut)
+
+            if adres:
+                if "/i/" in adres and "1050x0" in adres:
+                    znalezione_1050.append(adres)
+                else:
+                    kandydaci.append(adres)
+
+    wszystkie = znalezione_1050 + kandydaci
+
+    for adres in wszystkie:
+        if not adres:
             continue
-            
+
+        pelny_adres = urljoin(url_artykulu, adres.strip())
+
+        if pelny_adres.startswith(("http://", "https://")):
+            return pelny_adres
+
+    return None
+
+
+def pobierz_dane_z_artykulu(url):
+    html_bytes, finalny_url, _ = bezpieczne_pobranie(
+        url=url,
+        maks_rozmiar=MAKS_ROZMIAR_HTML,
+        oczekiwany_typ="html",
+    )
+
+    html = html_bytes.decode("utf-8", errors="replace")
+    soup = BeautifulSoup(html, "html.parser")
+
+    tytul = "BRAK TYTUŁU"
+
+    og_title = soup.find("meta", property="og:title")
+
+    if og_title and og_title.get("content"):
+        tytul = wyczysc_tytul_portalu(
+            og_title.get("content")
+        )
+    elif soup.title:
+        tytul = wyczysc_tytul_portalu(
+            soup.title.get_text(" ", strip=True)
+        )
+
+    adres_zdjecia = znajdz_adres_zdjecia(
+        soup,
+        finalny_url,
+    )
+
+    if not adres_zdjecia:
+        raise ValueError(
+            "Nie udało się odnaleźć głównego zdjęcia artykułu."
+        )
+
+    obraz_bytes, _, _ = bezpieczne_pobranie(
+        url=adres_zdjecia,
+        maks_rozmiar=MAKS_ROZMIAR_OBRAZU,
+        oczekiwany_typ="image",
+    )
+
+    obraz = wczytaj_obraz(obraz_bytes)
+
+    if obraz.width < 300 or obraz.height < 200:
+        raise ValueError(
+            "Pobrane zdjęcie jest zbyt małe do przygotowania grafiki."
+        )
+
+    return tytul, obraz_bytes
+
+
+# ============================================================
+# ZAWIJANIE I DOPASOWANIE TEKSTU
+# ============================================================
+
+def podziel_dlugie_slowo(slowo, font, maks_szerokosc):
+    fragmenty = []
+    aktualny = ""
+
+    for znak in slowo:
+        test = aktualny + znak
+
+        if (
+            szerokosc_tekstu(font, test) <= maks_szerokosc
+            or not aktualny
+        ):
+            aktualny = test
+        else:
+            fragmenty.append(aktualny)
+            aktualny = znak
+
+    if aktualny:
+        fragmenty.append(aktualny)
+
+    return fragmenty
+
+
+def zawin_tekst(tekst, font, maks_szerokosc):
+    linie_ostateczne = []
+
+    for akapit in tekst.splitlines() or [""]:
+        slowa = akapit.split()
+
+        if not slowa:
+            linie_ostateczne.append("")
+            continue
+
         aktualna_linia = []
+
         for slowo in slowa:
-            linia_testowa = " ".join(aktualna_linia + [slowo])
-            szerokosc = font.getlength(linia_testowa) if hasattr(font, 'getlength') else font.getbbox(linia_testowa)[2]
-            
-            if szerokosc <= max_szerokosc:
+            if szerokosc_tekstu(font, slowo) > maks_szerokosc:
+                if aktualna_linia:
+                    linie_ostateczne.append(
+                        " ".join(aktualna_linia)
+                    )
+                    aktualna_linia = []
+
+                fragmenty = podziel_dlugie_slowo(
+                    slowo,
+                    font,
+                    maks_szerokosc,
+                )
+
+                linie_ostateczne.extend(fragmenty[:-1])
+
+                if fragmenty:
+                    aktualna_linia = [fragmenty[-1]]
+
+                continue
+
+            test = " ".join(aktualna_linia + [slowo])
+
+            if szerokosc_tekstu(font, test) <= maks_szerokosc:
                 aktualna_linia.append(slowo)
             else:
-                linie_ostateczne.append(" ".join(aktualna_linia))
+                if aktualna_linia:
+                    linie_ostateczne.append(
+                        " ".join(aktualna_linia)
+                    )
+
                 aktualna_linia = [slowo]
-        
+
         if aktualna_linia:
-            linie_ostateczne.append(" ".join(aktualna_linia))
-            
+            linie_ostateczne.append(
+                " ".join(aktualna_linia)
+            )
+
     return linie_ostateczne
 
-# ==========================================
-# KOLOR DOMINUJĄCY ZE ZDJĘCIA
-# ==========================================
-def _analiza_barwna(sciezka_zdjecia):
-    img = Image.open(sciezka_zdjecia).convert("RGB")
-    img = img.resize((120, 120), Image.Resampling.LANCZOS)
 
-    paleta = img.quantize(colors=12, method=Image.Quantize.FASTOCTREE).convert("RGB")
-    kolory = paleta.getcolors(120 * 120) or []
-    laczna_liczba = sum(licznik for licznik, _ in kolory) or 1
+def dopasuj_tekst(
+    tekst,
+    sciezka_fontu,
+    maks_rozmiar,
+    min_rozmiar,
+    maks_szerokosc,
+    maks_wysokosc,
+    odstep_linii=10,
+    maks_linii=None,
+):
+    for rozmiar in range(maks_rozmiar, min_rozmiar - 1, -1):
+        font = pobierz_czcionke(sciezka_fontu, rozmiar)
+        linie = zawin_tekst(
+            tekst,
+            font,
+            maks_szerokosc,
+        )
 
-    x = y = waga_odcienia = 0.0
-    srednie_nasycenie = 0.0
+        wysokosc_linii = rozmiar + odstep_linii
+        wysokosc_bloku = len(linie) * wysokosc_linii
+
+        if maks_linii and len(linie) > maks_linii:
+            continue
+
+        if wysokosc_bloku <= maks_wysokosc:
+            return font, linie, wysokosc_linii
+
+    font = pobierz_czcionke(
+        sciezka_fontu,
+        min_rozmiar,
+    )
+
+    linie = zawin_tekst(
+        tekst,
+        font,
+        maks_szerokosc,
+    )
+
+    if maks_linii:
+        linie = linie[:maks_linii]
+
+        if len(linie) == maks_linii:
+            ostatnia = linie[-1]
+
+            while (
+                ostatnia
+                and szerokosc_tekstu(
+                    font,
+                    ostatnia + "…",
+                ) > maks_szerokosc
+            ):
+                ostatnia = ostatnia[:-1]
+
+            linie[-1] = ostatnia.rstrip() + "…"
+
+    return font, linie, min_rozmiar + odstep_linii
+
+
+def rysuj_tekst(
+    obraz,
+    pozycja,
+    tekst,
+    font,
+    fill,
+    anchor=None,
+):
+    if PILMOJI_DOSTEPNE:
+        try:
+            with Pilmoji(obraz) as pilmoji:
+                pilmoji.text(
+                    pozycja,
+                    tekst,
+                    font=font,
+                    fill=fill,
+                    anchor=anchor,
+                )
+            return
+        except Exception:
+            pass
+
+    draw = ImageDraw.Draw(obraz)
+    draw.text(
+        pozycja,
+        tekst,
+        font=font,
+        fill=fill,
+        anchor=anchor,
+    )
+
+
+# ============================================================
+# ANALIZA KOLORU
+# ============================================================
+
+def analiza_barwna(zrodlo_obrazu):
+    obraz = wczytaj_obraz(zrodlo_obrazu).convert("RGB")
+    obraz.thumbnail((160, 160), Image.Resampling.LANCZOS)
+
+    paleta = obraz.quantize(
+        colors=16,
+        method=Image.Quantize.FASTOCTREE,
+    ).convert("RGB")
+
+    kolory = paleta.getcolors(
+        paleta.width * paleta.height
+    ) or []
+
+    laczna_liczba = sum(
+        licznik for licznik, _ in kolory
+    ) or 1
+
+    x = 0.0
+    y = 0.0
+    waga_odcienia = 0.0
+    suma_nasycenia = 0.0
 
     for licznik, (r, g, b) in kolory:
         udzial = licznik / laczna_liczba
-        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
 
-        if v < 0.10 or v > 0.97:
+        h, s, v = colorsys.rgb_to_hsv(
+            r / 255,
+            g / 255,
+            b / 255,
+        )
+
+        if v < 0.08 or v > 0.98:
             continue
 
-        srednie_nasycenie += udzial * s
+        suma_nasycenia += udzial * s
 
-        if s >= 0.12:
-            waga = udzial * s
+        if s >= 0.10:
+            waga = udzial * max(s, 0.15)
             kat = 2 * math.pi * h
+
             x += waga * math.cos(kat)
             y += waga * math.sin(kat)
             waga_odcienia += waga
 
-    odcien = 0.0 if waga_odcienia == 0 else (math.atan2(y, x) / (2 * math.pi)) % 1.0
-    return odcien, srednie_nasycenie
+    if waga_odcienia == 0:
+        odcien = 0.0
+    else:
+        odcien = (
+            math.atan2(y, x) / (2 * math.pi)
+        ) % 1.0
 
-def _na_podklad(odcien, nasycenie):
-    jasnosc = 0.30 if nasycenie >= 0.15 else 0.24
-    r, g, b = colorsys.hsv_to_rgb(odcien, nasycenie, jasnosc)
-    return (int(r * 255), int(g * 255), int(b * 255))
+    return odcien, suma_nasycenia
+
+
+def na_ciemny_podklad(odcien, nasycenie):
+    jasnosc = 0.30 if nasycenie >= 0.15 else 0.23
+
+    r, g, b = colorsys.hsv_to_rgb(
+        odcien,
+        nasycenie,
+        jasnosc,
+    )
+
+    return (
+        int(r * 255),
+        int(g * 255),
+        int(b * 255),
+    )
+
 
 def znormalizuj_kolor_podkladu(rgb):
-    h, s, _v = colorsys.rgb_to_hsv(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
-    return _na_podklad(h, min(s, 0.75))
+    h, s, _ = colorsys.rgb_to_hsv(
+        rgb[0] / 255,
+        rgb[1] / 255,
+        rgb[2] / 255,
+    )
 
-def kolor_podkladu_ze_zdjecia(sciezka_zdjecia, maks_nasycenie=0.65):
-    if not sciezka_zdjecia or not os.path.exists(sciezka_zdjecia):
-        return None
-    try:
-        odcien, nasycenie = _analiza_barwna(sciezka_zdjecia)
-        nasycenie = min(nasycenie * 2.5, maks_nasycenie)
-        return _na_podklad(odcien, nasycenie)
-    except Exception as e:
-        print(f"⚠️ [KOLOR DOMINUJĄCY] Nie udało się wyliczyć koloru: {e}")
-        return None
+    return na_ciemny_podklad(
+        h,
+        min(s, 0.75),
+    )
 
-def kolor_pastelowy_ze_zdjecia(sciezka_zdjecia):
+
+def kolor_podkladu_ze_zdjecia(zrodlo_obrazu, maks_nasycenie=0.65):
     try:
-        odcien, _ = _analiza_barwna(sciezka_zdjecia)
-        r, g, b = colorsys.hsv_to_rgb(odcien, 0.16, 0.95)
-        return (int(r * 255), int(g * 255), int(b * 255))
+        odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
+        nasycenie = min(
+            nasycenie * 2.5,
+            maks_nasycenie,
+        )
+
+        return na_ciemny_podklad(
+            odcien,
+            nasycenie,
+        )
+
+    except Exception as blad:
+        print(
+            "⚠️ Nie udało się wyliczyć koloru dominującego:",
+            blad,
+        )
+        return (28, 30, 34)
+
+
+def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
+    try:
+        odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
+
+        nasycenie_docelowe = ogranicz(
+            0.12 + nasycenie * 0.20,
+            0.12,
+            0.24,
+        )
+
+        r, g, b = colorsys.hsv_to_rgb(
+            odcien,
+            nasycenie_docelowe,
+            0.94,
+        )
+
+        return (
+            int(r * 255),
+            int(g * 255),
+            int(b * 255),
+        )
+
     except Exception:
-        return (245, 235, 240) 
+        return (229, 209, 212)
 
-# ==========================================
-# GENERATOR 1: MAGAZYN 
-# ==========================================
-def generuj_grafike_magazyn(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False, kolor_podkladu=None):
-    szerokosc, wysokosc = 1080, 1080
-    kolor_bazowy = kolor_podkladu if kolor_podkladu else (0, 0, 0)
-    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_bazowy + (255,))
-    
-    if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
-        img = Image.open(sciezka_zdjecia).convert("RGBA")
-        
-        prop_docelowa = szerokosc / wysokosc
-        prop_zdjecia = img.width / img.height
-        if prop_zdjecia > prop_docelowa:
-            nowa_szer = int(prop_docelowa * img.height)
-            margines = (img.width - nowa_szer) // 2
-            img = img.crop((margines, 0, margines + nowa_szer, img.height))
-        else:
-            nowa_wys = int(img.width / prop_docelowa)
-            margines = (img.height - nowa_wys) // 2
-            img = img.crop((0, margines, img.width, margines + nowa_wys))
-        img = img.resize((szerokosc, wysokosc), Image.Resampling.LANCZOS)
-            
-        enhancer_sharp = ImageEnhance.Sharpness(img)
-        img = enhancer_sharp.enhance(1.2)
-        canvas.paste(img, (0, 0))
 
-    gradient = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
-    draw_grad = ImageDraw.Draw(gradient)
-    start_grad = int(wysokosc * 0.25) 
-    
-    max_alpha = 245 if is_audio else 235
-    for y in range(start_grad, wysokosc):
-        alpha = int(max_alpha * ((y - start_grad) / (wysokosc - start_grad)))
-        draw_grad.line([(0, y), (szerokosc, y)], fill=kolor_bazowy + (alpha,))
-    canvas = Image.alpha_composite(canvas, gradient)
-    
+# ============================================================
+# GENERATOR POSTA: MAGAZYN
+# ============================================================
+
+def generuj_grafike_magazyn(
+    zrodlo_zdjecia,
+    sciezka_logo,
+    tekst_glowny,
+    tekst_stopki,
+    is_audio=False,
+    kolor_podkladu=None,
+):
+    szerokosc = SZEROKOSC_POSTA
+    wysokosc = WYSOKOSC_POSTA
+
+    kolor_bazowy = kolor_podkladu or (0, 0, 0)
+
+    canvas = Image.new(
+        "RGBA",
+        (szerokosc, wysokosc),
+        kolor_bazowy + (255,),
+    )
+
+    if zrodlo_zdjecia:
+        obraz = wczytaj_obraz(zrodlo_zdjecia)
+        obraz = kadruj_cover(
+            obraz,
+            szerokosc,
+            wysokosc,
+        )
+
+        obraz = ImageEnhance.Sharpness(
+            obraz
+        ).enhance(1.15)
+
+        canvas.alpha_composite(obraz)
+
+    gradient = Image.new(
+        "RGBA",
+        (szerokosc, wysokosc),
+        (0, 0, 0, 0),
+    )
+
+    draw_gradient = ImageDraw.Draw(gradient)
+    start_gradientu = int(wysokosc * 0.22)
+    maks_alpha = 246 if is_audio else 235
+
+    for y in range(start_gradientu, wysokosc):
+        postep = (
+            (y - start_gradientu)
+            / (wysokosc - start_gradientu)
+        )
+
+        alpha = int(maks_alpha * (postep ** 1.15))
+
+        draw_gradient.line(
+            [(0, y), (szerokosc, y)],
+            fill=kolor_bazowy + (alpha,),
+        )
+
+    canvas = Image.alpha_composite(
+        canvas,
+        gradient,
+    )
+
     if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = Image.open(sciezka_logo).convert("RGBA")
-        logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
-        canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
+        logo = wczytaj_obraz(sciezka_logo)
+        logo.thumbnail(
+            (260, 180),
+            Image.Resampling.LANCZOS,
+        )
 
-    czesci_tytulu = tekst_glowny.split('|')
-    tekst_duzy = czesci_tytulu[0].strip()
-    tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
+        canvas.alpha_composite(
+            logo,
+            (
+                szerokosc - logo.width - 40,
+                40,
+            ),
+        )
 
-    rozmiar_fontu = 46 if len(tekst_duzy) > 50 else 55
-    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65) 
-    
-    try:
-        font_duzy = ImageFont.truetype("Montserrat-Bold.ttf", rozmiar_fontu)
-        font_maly = ImageFont.truetype("Montserrat-SemiBold.ttf", rozmiar_fontu_maly)
-        font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 24)
-    except Exception: return
+    tekst_duzy, separator, tekst_maly = tekst_glowny.partition("|")
+    tekst_duzy = tekst_duzy.strip().upper()
+    tekst_maly = tekst_maly.strip().upper() if separator else ""
 
-    kolor_biel = (255, 255, 255, 255)
-    
-    linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 140)
-    wysokosc_linii = rozmiar_fontu + 16
-    
+    font_duzy, linie_duze, wysokosc_linii = dopasuj_tekst(
+        tekst=tekst_duzy,
+        sciezka_fontu=SCIEZKA_FONT_BOLD,
+        maks_rozmiar=58,
+        min_rozmiar=34,
+        maks_szerokosc=szerokosc - 140,
+        maks_wysokosc=330,
+        odstep_linii=14,
+        maks_linii=5,
+    )
+
     linie_male = []
-    wysokosc_linii_male = rozmiar_fontu_maly + 10
+    font_maly = None
+    wysokosc_linii_male = 0
+
     if tekst_maly:
-        linie_male = zawin_tekst(tekst_maly.upper(), font_maly, szerokosc - 140)
+        font_maly, linie_male, wysokosc_linii_male = dopasuj_tekst(
+            tekst=tekst_maly,
+            sciezka_fontu=SCIEZKA_FONT_SEMIBOLD,
+            maks_rozmiar=38,
+            min_rozmiar=26,
+            maks_szerokosc=szerokosc - 140,
+            maks_wysokosc=150,
+            odstep_linii=10,
+            maks_linii=3,
+        )
 
-    calkowita_wysokosc = (len(linie_glowne) * wysokosc_linii)
-    if tekst_maly:
-        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male) 
+    calkowita_wysokosc = (
+        len(linie_duze) * wysokosc_linii
+    )
 
-    y_tekstu_poczatkowy = (wysokosc - 280) - (calkowita_wysokosc / 2)
+    if linie_male:
+        calkowita_wysokosc += (
+            22
+            + len(linie_male) * wysokosc_linii_male
+        )
 
-    with Pilmoji(canvas) as pilmoji:
-        for linia in linie_glowne:
-            szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
-            pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
-            y_tekstu_poczatkowy += wysokosc_linii
+    y = int(
+        (wysokosc - 275)
+        - calkowita_wysokosc / 2
+    )
 
-        if tekst_maly:
-            y_tekstu_poczatkowy += 20
-            for linia in linie_male:
-                szer_linii = font_maly.getlength(linia) if hasattr(font_maly, 'getlength') else font_maly.getbbox(linia)[2]
-                pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_maly)
-                y_tekstu_poczatkowy += wysokosc_linii_male
+    kolor_bialy = (255, 255, 255, 255)
 
-        if tekst_stopki:
-            tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
-            szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
-            pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 60), tekst_stopki_rozstrzelony, fill=kolor_biel, font=font_stopka)
+    for linia in linie_duze:
+        szer_linii = szerokosc_tekstu(
+            font_duzy,
+            linia,
+        )
 
-    canvas = canvas.convert("RGB") 
-    canvas.save(nazwa_wyjsciowa, quality=100)
+        rysuj_tekst(
+            canvas,
+            (
+                (szerokosc - szer_linii) / 2,
+                y,
+            ),
+            linia,
+            font_duzy,
+            kolor_bialy,
+        )
 
-# ==========================================
-# GENERATOR 2: SPLIT SCREEN 
-# ==========================================
-def generuj_grafike_split(sciezka_zdjecia, sciezka_logo, tekst_glowny, tekst_stopki, nazwa_wyjsciowa, is_audio=False, kolor_podkladu=None):
-    szerokosc, wysokosc = 1080, 1080
-    wys_zdjecia = int(szerokosc * 9 / 16)
-    
-    if kolor_podkladu:
-        kolor_tla_tekstu = kolor_podkladu
-    else:
-        kolor_tla_tekstu = (18, 18, 20) if is_audio else (25, 30, 35)
-    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla_tekstu)
-    
-    if sciezka_zdjecia and os.path.exists(sciezka_zdjecia):
-        img = Image.open(sciezka_zdjecia).convert("RGBA")
-        
+        y += wysokosc_linii
+
+    if linie_male and font_maly:
+        y += 22
+
+        for linia in linie_male:
+            szer_linii = szerokosc_tekstu(
+                font_maly,
+                linia,
+            )
+
+            rysuj_tekst(
+                canvas,
+                (
+                    (szerokosc - szer_linii) / 2,
+                    y,
+                ),
+                linia,
+                font_maly,
+                kolor_bialy,
+            )
+
+            y += wysokosc_linii_male
+
+    if tekst_stopki:
+        font_stopka = pobierz_czcionke(
+            SCIEZKA_FONT_SEMIBOLD,
+            22,
+        )
+
+        tekst_rozstrzelony = "   ".join(
+            tekst_stopki
+        )
+
+        szer_stopki = szerokosc_tekstu(
+            font_stopka,
+            tekst_rozstrzelony,
+        )
+
+        rysuj_tekst(
+            canvas,
+            (
+                (szerokosc - szer_stopki) / 2,
+                wysokosc - 58,
+            ),
+            tekst_rozstrzelony,
+            font_stopka,
+            kolor_bialy,
+        )
+
+    return obraz_do_jpeg_bytes(canvas)
+
+
+# ============================================================
+# GENERATOR POSTA: SPLIT SCREEN
+# ============================================================
+
+def generuj_grafike_split(
+    zrodlo_zdjecia,
+    sciezka_logo,
+    tekst_glowny,
+    tekst_stopki,
+    is_audio=False,
+    kolor_podkladu=None,
+):
+    szerokosc = SZEROKOSC_POSTA
+    wysokosc = WYSOKOSC_POSTA
+    wysokosc_zdjecia = int(szerokosc * 9 / 16)
+
+    kolor_tla = kolor_podkladu or (
+        (18, 18, 20) if is_audio else (25, 30, 35)
+    )
+
+    canvas = Image.new(
+        "RGBA",
+        (szerokosc, wysokosc),
+        kolor_tla + (255,),
+    )
+
+    if zrodlo_zdjecia:
+        obraz = wczytaj_obraz(zrodlo_zdjecia)
+
         if is_audio:
-            wspolczynnik = min(szerokosc / img.width, wys_zdjecia / img.height)
-            nowa_szer = int(img.width * wspolczynnik)
-            nowa_wys = int(img.height * wspolczynnik)
-            img_resized = img.resize((nowa_szer, nowa_wys), Image.Resampling.LANCZOS)
-            kolor_probki = img.getpixel((0, 0))
-            tlo = Image.new("RGBA", (szerokosc, wys_zdjecia), kolor_probki)
-            offset_x = (szerokosc - nowa_szer) // 2
-            offset_y = (wys_zdjecia - nowa_wys) // 2
-            tlo.paste(img_resized, (offset_x, offset_y))
-            img = tlo
+            obraz.thumbnail(
+                (szerokosc, wysokosc_zdjecia),
+                Image.Resampling.LANCZOS,
+            )
+
+            probka = obraz.convert("RGB").resize(
+                (1, 1),
+                Image.Resampling.LANCZOS,
+            ).getpixel((0, 0))
+
+            tlo = Image.new(
+                "RGBA",
+                (szerokosc, wysokosc_zdjecia),
+                probka + (255,),
+            )
+
+            offset_x = (
+                szerokosc - obraz.width
+            ) // 2
+
+            offset_y = (
+                wysokosc_zdjecia - obraz.height
+            ) // 2
+
+            tlo.alpha_composite(
+                obraz,
+                (offset_x, offset_y),
+            )
+
+            obraz = tlo
         else:
-            prop_docelowa = szerokosc / wys_zdjecia
-            prop_zdjecia = img.width / img.height
-            if prop_zdjecia > prop_docelowa:
-                nowa_szer = int(prop_docelowa * img.height)
-                margines = (img.width - nowa_szer) // 2
-                img = img.crop((margines, 0, margines + nowa_szer, img.height))
-            else:
-                nowa_wys = int(img.width / prop_docelowa)
-                margines = (img.height - nowa_wys) // 2
-                img = img.crop((0, margines, img.width, margines + nowa_wys))
-            img = img.resize((szerokosc, wys_zdjecia), Image.Resampling.LANCZOS)
-            
-        enhancer_sharp = ImageEnhance.Sharpness(img)
-        img = enhancer_sharp.enhance(1.2)
-        canvas.paste(img, (0, 0))
+            obraz = kadruj_cover(
+                obraz,
+                szerokosc,
+                wysokosc_zdjecia,
+            )
+
+        obraz = ImageEnhance.Sharpness(
+            obraz
+        ).enhance(1.15)
+
+        canvas.alpha_composite(obraz)
 
     draw = ImageDraw.Draw(canvas)
 
     if is_audio:
-        draw.rectangle([0, wys_zdjecia, szerokosc, wys_zdjecia + 4], fill=(215, 40, 40, 255))
+        draw.rectangle(
+            [
+                0,
+                wysokosc_zdjecia,
+                szerokosc,
+                wysokosc_zdjecia + 4,
+            ],
+            fill=(215, 40, 40, 255),
+        )
 
     if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = Image.open(sciezka_logo).convert("RGBA")
-        logo.thumbnail((240, 240), Image.Resampling.LANCZOS)
-        canvas.paste(logo, (szerokosc - logo.width - 40, 40), logo)
+        logo = wczytaj_obraz(sciezka_logo)
+        logo.thumbnail(
+            (260, 180),
+            Image.Resampling.LANCZOS,
+        )
 
-    czesci_tytulu = tekst_glowny.split('|')
-    tekst_duzy = czesci_tytulu[0].strip()
-    tekst_maly = czesci_tytulu[1].strip() if len(czesci_tytulu) > 1 else ""
+        canvas.alpha_composite(
+            logo,
+            (
+                szerokosc - logo.width - 40,
+                40,
+            ),
+        )
 
-    rozmiar_fontu = 48 if len(tekst_duzy) > 50 else 56
-    rozmiar_fontu_maly = int(rozmiar_fontu * 0.65)
-    
-    try:
-        font_duzy = ImageFont.truetype("Montserrat-Bold.ttf", rozmiar_fontu)
-        font_maly = ImageFont.truetype("Montserrat-SemiBold.ttf", rozmiar_fontu_maly)
-        font_stopka = ImageFont.truetype("Montserrat-SemiBold.ttf", 22)
-    except Exception: return
+    tekst_duzy, separator, tekst_maly = tekst_glowny.partition("|")
+    tekst_duzy = tekst_duzy.strip().upper()
+    tekst_maly = tekst_maly.strip().upper() if separator else ""
 
-    kolor_biel = (255, 255, 255, 255)
-    
-    linie_glowne = zawin_tekst(tekst_duzy.upper(), font_duzy, szerokosc - 100)
-    wysokosc_linii = rozmiar_fontu + 15
+    dostepna_wysokosc = (
+        wysokosc - wysokosc_zdjecia - 95
+    )
+
+    font_duzy, linie_duze, wysokosc_linii = dopasuj_tekst(
+        tekst=tekst_duzy,
+        sciezka_fontu=SCIEZKA_FONT_BOLD,
+        maks_rozmiar=55,
+        min_rozmiar=30,
+        maks_szerokosc=szerokosc - 110,
+        maks_wysokosc=dostepna_wysokosc * 0.72,
+        odstep_linii=12,
+        maks_linii=4,
+    )
 
     linie_male = []
-    wysokosc_linii_male = rozmiar_fontu_maly + 10
+    font_maly = None
+    wysokosc_linii_male = 0
+
     if tekst_maly:
-        linie_male = zawin_tekst(tekst_maly.upper(), font_maly, szerokosc - 100)
-        
-    calkowita_wysokosc = (len(linie_glowne) * wysokosc_linii)
-    if tekst_maly:
-        calkowita_wysokosc += 20 + (len(linie_male) * wysokosc_linii_male)
+        font_maly, linie_male, wysokosc_linii_male = dopasuj_tekst(
+            tekst=tekst_maly,
+            sciezka_fontu=SCIEZKA_FONT_SEMIBOLD,
+            maks_rozmiar=34,
+            min_rozmiar=23,
+            maks_szerokosc=szerokosc - 110,
+            maks_wysokosc=110,
+            odstep_linii=8,
+            maks_linii=2,
+        )
 
-    y_tekstu_poczatkowy = (wys_zdjecia + ((wysokosc - wys_zdjecia) / 2)) - (calkowita_wysokosc / 2) - 20 
+    calkowita_wysokosc = (
+        len(linie_duze) * wysokosc_linii
+    )
 
-    with Pilmoji(canvas) as pilmoji:
-        for linia in linie_glowne:
-            szer_linii = font_duzy.getlength(linia) if hasattr(font_duzy, 'getlength') else font_duzy.getbbox(linia)[2]
-            pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_duzy)
-            y_tekstu_poczatkowy += wysokosc_linii
+    if linie_male:
+        calkowita_wysokosc += (
+            16
+            + len(linie_male) * wysokosc_linii_male
+        )
 
-        if tekst_maly:
-            y_tekstu_poczatkowy += 20
-            for linia in linie_male:
-                szer_linii = font_maly.getlength(linia) if hasattr(font_maly, 'getlength') else font_maly.getbbox(linia)[2]
-                pilmoji.text(((szerokosc - szer_linii) / 2, y_tekstu_poczatkowy), linia, fill=kolor_biel, font=font_maly)
-                y_tekstu_poczatkowy += wysokosc_linii_male
+    srodek_obszaru = (
+        wysokosc_zdjecia
+        + (wysokosc - wysokosc_zdjecia) / 2
+        - 12
+    )
 
-        if tekst_stopki:
-            tekst_stopki_rozstrzelony = "   ".join(tekst_stopki)
-            szer_rozstrzelona = font_stopka.getlength(tekst_stopki_rozstrzelony) if hasattr(font_stopka, 'getlength') else font_stopka.getbbox(tekst_stopki_rozstrzelony)[2]
+    y = int(
+        srodek_obszaru
+        - calkowita_wysokosc / 2
+    )
 
-            if kolor_podkladu:
-                kolor_stopki = (235, 235, 235, 255)
-            else:
-                kolor_stopki = (255, 255, 255, 255) if is_audio else (180, 180, 180, 255)
-            pilmoji.text(((szerokosc - szer_rozstrzelona) / 2, wysokosc - 50), tekst_stopki_rozstrzelony, fill=kolor_stopki, font=font_stopka)
+    kolor_bialy = (255, 255, 255, 255)
 
-    canvas = canvas.convert("RGB") 
-    canvas.save(nazwa_wyjsciowa, quality=100)
+    for linia in linie_duze:
+        szer_linii = szerokosc_tekstu(
+            font_duzy,
+            linia,
+        )
+
+        rysuj_tekst(
+            canvas,
+            (
+                (szerokosc - szer_linii) / 2,
+                y,
+            ),
+            linia,
+            font_duzy,
+            kolor_bialy,
+        )
+
+        y += wysokosc_linii
+
+    if linie_male and font_maly:
+        y += 16
+
+        for linia in linie_male:
+            szer_linii = szerokosc_tekstu(
+                font_maly,
+                linia,
+            )
+
+            rysuj_tekst(
+                canvas,
+                (
+                    (szerokosc - szer_linii) / 2,
+                    y,
+                ),
+                linia,
+                font_maly,
+                kolor_bialy,
+            )
+
+            y += wysokosc_linii_male
+
+    if tekst_stopki:
+        font_stopka = pobierz_czcionke(
+            SCIEZKA_FONT_SEMIBOLD,
+            21,
+        )
+
+        tekst_rozstrzelony = "   ".join(
+            tekst_stopki
+        )
+
+        szer_stopki = szerokosc_tekstu(
+            font_stopka,
+            tekst_rozstrzelony,
+        )
+
+        kolor_stopki = (
+            (235, 235, 235, 255)
+            if kolor_podkladu
+            else (
+                (255, 255, 255, 255)
+                if is_audio
+                else (185, 185, 190, 255)
+            )
+        )
+
+        rysuj_tekst(
+            canvas,
+            (
+                (szerokosc - szer_stopki) / 2,
+                wysokosc - 48,
+            ),
+            tekst_rozstrzelony,
+            font_stopka,
+            kolor_stopki,
+        )
+
+    return obraz_do_jpeg_bytes(canvas)
 
 
-# ==========================================
-# GENERATOR 3: COVER NA FB (NOWOŚĆ Z CIENIEM I WIĘKSZYM LOGO)
-# ==========================================
-def generuj_cover_fb(sciezka_okladki, sciezka_logo, tekst_gora, tekst_dol, nazwa_wyjsciowa, kolor_tla):
-    szerokosc, wysokosc = 1640, 624 
-    canvas = Image.new("RGBA", (szerokosc, wysokosc), kolor_tla + (255,))
-    
-    # --- 1. Obsługa okładki z CIENIEM ---
-    pozycja_x_okladki = szerokosc - 400 
-    if sciezka_okladki and os.path.exists(sciezka_okladki):
-        okladka = Image.open(sciezka_okladki).convert("RGBA")
-        
-        docelowa_wys = wysokosc - 80 
-        wspolczynnik = docelowa_wys / okladka.height
-        docelowa_szer = int(okladka.width * wspolczynnik)
-        okladka = okladka.resize((docelowa_szer, docelowa_wys), Image.Resampling.LANCZOS)
-        
-        pozycja_x_okladki = szerokosc - docelowa_szer - 150 
-        pozycja_y_okladki = (wysokosc - docelowa_wys) // 2
+# ============================================================
+# NOWOCZESNY COVER FACEBOOK
+# ============================================================
 
-        # Generowanie cienia
-        cien = Image.new('RGBA', (docelowa_szer, docelowa_wys), (0, 0, 0, 255))
-        warstwa_cienia = Image.new('RGBA', (szerokosc, wysokosc), (0, 0, 0, 0))
-        przesuniecie_cienia_x = 20
-        przesuniecie_cienia_y = 20
-        warstwa_cienia.paste(cien, (pozycja_x_okladki + przesuniecie_cienia_x, pozycja_y_okladki + przesuniecie_cienia_y))
-        
-        warstwa_cienia = warstwa_cienia.filter(ImageFilter.GaussianBlur(25))
-        dane_cienia = warstwa_cienia.getdata()
-        nowe_dane_cienia = []
-        for item in dane_cienia:
-            nowe_dane_cienia.append((item[0], item[1], item[2], int(item[3] * 0.4)))
-        warstwa_cienia.putdata(nowe_dane_cienia)
+def utworz_gradient_covera(kolor_tla):
+    lewy_kolor = mieszaj_kolory(
+        kolor_tla,
+        (255, 255, 255),
+        0.22,
+    )
 
-        canvas = Image.alpha_composite(canvas, warstwa_cienia)
-        canvas.paste(okladka, (pozycja_x_okladki, pozycja_y_okladki), okladka)
+    prawy_kolor = mieszaj_kolory(
+        kolor_tla,
+        (45, 45, 55),
+        0.08,
+    )
 
+    canvas = Image.new(
+        "RGBA",
+        (SZEROKOSC_COVERA, WYSOKOSC_COVERA),
+        lewy_kolor + (255,),
+    )
 
-    # --- 2. Inicjalizacja czcionek ---
-    try:
-        font_gora = ImageFont.truetype("Montserrat-SemiBold.ttf", 40)
-        font_dol = ImageFont.truetype("Montserrat-Bold.ttf", 48)
-    except Exception:
-        return
-
-    # --- 3. Obliczanie wysokości bloku (Logo + Teksty) i pozycjonowanie ---
-    wysokosc_bloku = 0
-    logo = None
-    if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = Image.open(sciezka_logo).convert("RGBA")
-        logo.thumbnail((750, 260), Image.Resampling.LANCZOS)
-        wysokosc_bloku += logo.height + 25 
-    
-    wysokosc_bloku += 40 + 48 + 15 
-    y_tekstu = (wysokosc - wysokosc_bloku) // 2
-
-    # Prawa krawędź do wyrównania (odsunięta o 50px w lewo od okładki)
-    prawa_krawedz_tekstu = pozycja_x_okladki - 50
-
-    kolor_tekstu = (30, 30, 30, 255) 
     draw = ImageDraw.Draw(canvas)
 
-    if logo:
-        poz_logo_x = prawa_krawedz_tekstu - logo.width
-        canvas.paste(logo, (poz_logo_x, y_tekstu), logo)
-        y_tekstu += logo.height + 25
+    for x in range(SZEROKOSC_COVERA):
+        postep = x / max(1, SZEROKOSC_COVERA - 1)
 
-    szer_gora = font_gora.getlength(tekst_gora) if hasattr(font_gora, 'getlength') else font_gora.getbbox(tekst_gora)[2]
-    draw.text((prawa_krawedz_tekstu - szer_gora, y_tekstu), tekst_gora, fill=kolor_tekstu, font=font_gora)
-    
-    y_tekstu += 60 
-    
-    szer_dol = font_dol.getlength(tekst_dol) if hasattr(font_dol, 'getlength') else font_dol.getbbox(tekst_dol)[2]
-    draw.text((prawa_krawedz_tekstu - szer_dol, y_tekstu), tekst_dol.upper(), fill=kolor_tekstu, font=font_dol)
+        kolor = mieszaj_kolory(
+            lewy_kolor,
+            prawy_kolor,
+            postep,
+        )
 
-    canvas = canvas.convert("RGB")
-    canvas.save(nazwa_wyjsciowa, quality=100)
+        draw.line(
+            [(x, 0), (x, WYSOKOSC_COVERA)],
+            fill=kolor + (255,),
+        )
+
+    return canvas, lewy_kolor
 
 
-# ==========================================
-# GENEROWANIE WSZYSTKICH WARIANTÓW (POSTY)
-# ==========================================
+def generuj_cover_fb(
+    zrodlo_okladki,
+    sciezka_logo,
+    tekst_gora,
+    tekst_dol,
+    kolor_tla,
+):
+    canvas, kolor_lewej_czesci = utworz_gradient_covera(
+        kolor_tla
+    )
+
+    kolor_tekstu = kolor_tekstu_dla_tla(
+        kolor_lewej_czesci
+    )
+
+    kolor_pomocniczy = kolor_drugoplanowy(
+        kolor_tekstu
+    )
+
+    dekoracje = Image.new(
+        "RGBA",
+        canvas.size,
+        (0, 0, 0, 0),
+    )
+
+    draw_dekoracje = ImageDraw.Draw(dekoracje)
+
+    kolor_kola = mieszaj_kolory(
+        kolor_tla,
+        (255, 255, 255),
+        0.34,
+    )
+
+    draw_dekoracje.ellipse(
+        (990, 45, 1590, 680),
+        fill=kolor_kola + (115,),
+    )
+
+    draw_dekoracje.ellipse(
+        (1160, 155, 1640, 650),
+        outline=(255, 255, 255, 65),
+        width=3,
+    )
+
+    draw_dekoracje.line(
+        [(1000, 120), (1490, 70)],
+        fill=(255, 255, 255, 45),
+        width=2,
+    )
+
+    canvas = Image.alpha_composite(
+        canvas,
+        dekoracje,
+    )
+
+    # Bezpieczny obszar:
+    # X: 180–1460
+    # Y: 48–672
+    tekst_x = 220
+    maks_szerokosc_tekstu = 680
+    y = 105
+
+    if sciezka_logo and os.path.exists(sciezka_logo):
+        logo = wczytaj_obraz(sciezka_logo)
+        logo.thumbnail(
+            (480, 115),
+            Image.Resampling.LANCZOS,
+        )
+
+        canvas.alpha_composite(
+            logo,
+            (tekst_x, y),
+        )
+
+        y += logo.height + 46
+    else:
+        y += 18
+
+    font_etykieta = pobierz_czcionke(
+        SCIEZKA_FONT_SEMIBOLD,
+        25,
+    )
+
+    etykieta = "NOWE WYDANIE"
+
+    rysuj_tekst(
+        canvas,
+        (tekst_x, y),
+        etykieta,
+        font_etykieta,
+        kolor_pomocniczy,
+    )
+
+    y += 58
+
+    tekst_gora = (
+        tekst_gora.strip()
+        or "Najnowsze wydanie już dostępne"
+    )
+
+    font_glowny, linie_glowne, wysokosc_linii = dopasuj_tekst(
+        tekst=tekst_gora,
+        sciezka_fontu=SCIEZKA_FONT_BOLD,
+        maks_rozmiar=66,
+        min_rozmiar=40,
+        maks_szerokosc=maks_szerokosc_tekstu,
+        maks_wysokosc=235,
+        odstep_linii=10,
+        maks_linii=3,
+    )
+
+    for linia in linie_glowne:
+        rysuj_tekst(
+            canvas,
+            (tekst_x, y),
+            linia,
+            font_glowny,
+            kolor_tekstu,
+        )
+
+        y += wysokosc_linii
+
+    y += 28
+
+    tekst_dol = tekst_dol.strip().upper()
+
+    if tekst_dol:
+        font_badge = pobierz_czcionke(
+            SCIEZKA_FONT_SEMIBOLD,
+            27,
+        )
+
+        szer_badge_tekstu = szerokosc_tekstu(
+            font_badge,
+            tekst_dol,
+        )
+
+        padding_x = 30
+        wysokosc_badge = 58
+        szerokosc_badge = int(
+            szer_badge_tekstu + 2 * padding_x
+        )
+
+        szerokosc_badge = min(
+            szerokosc_badge,
+            maks_szerokosc_tekstu,
+        )
+
+        if kolor_tekstu[:3] == (255, 255, 255):
+            kolor_badge = (255, 255, 255, 32)
+            obrys_badge = (255, 255, 255, 90)
+        else:
+            kolor_badge = (25, 25, 30, 18)
+            obrys_badge = (25, 25, 30, 65)
+
+        draw = ImageDraw.Draw(canvas)
+
+        draw.rounded_rectangle(
+            (
+                tekst_x,
+                y,
+                tekst_x + szerokosc_badge,
+                y + wysokosc_badge,
+            ),
+            radius=29,
+            fill=kolor_badge,
+            outline=obrys_badge,
+            width=2,
+        )
+
+        rysuj_tekst(
+            canvas,
+            (
+                tekst_x + szerokosc_badge / 2,
+                y + wysokosc_badge / 2 - 1,
+            ),
+            tekst_dol,
+            font_badge,
+            kolor_tekstu,
+            anchor="mm",
+        )
+
+    # Okładka
+    okladka = wczytaj_obraz(zrodlo_okladki)
+    okladka.thumbnail(
+        (430, 555),
+        Image.Resampling.LANCZOS,
+    )
+
+    # Delikatne obramowanie
+    ramka = Image.new(
+        "RGBA",
+        (okladka.width + 10, okladka.height + 10),
+        (255, 255, 255, 235),
+    )
+
+    ramka.alpha_composite(
+        okladka,
+        (5, 5),
+    )
+
+    okladka_obrocona = ramka.rotate(
+        -1.4,
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
+    )
+
+    pozycja_x = 1060
+    pozycja_y = (
+        WYSOKOSC_COVERA - okladka_obrocona.height
+    ) // 2
+
+    pozycja_x = min(
+        pozycja_x,
+        1460 - okladka_obrocona.width,
+    )
+
+    pozycja_x = max(
+        pozycja_x,
+        930,
+    )
+
+    # Cień pod okładką
+    maska = okladka_obrocona.getchannel("A")
+
+    cien_elementu = Image.new(
+        "RGBA",
+        okladka_obrocona.size,
+        (12, 12, 18, 0),
+    )
+
+    maska_cienia = maska.point(
+        lambda alfa: int(alfa * 0.42)
+    )
+
+    cien_elementu.putalpha(maska_cienia)
+
+    warstwa_cienia = Image.new(
+        "RGBA",
+        canvas.size,
+        (0, 0, 0, 0),
+    )
+
+    warstwa_cienia.alpha_composite(
+        cien_elementu,
+        (
+            pozycja_x + 22,
+            pozycja_y + 25,
+        ),
+    )
+
+    warstwa_cienia = warstwa_cienia.filter(
+        ImageFilter.GaussianBlur(25)
+    )
+
+    canvas = Image.alpha_composite(
+        canvas,
+        warstwa_cienia,
+    )
+
+    canvas.alpha_composite(
+        okladka_obrocona,
+        (pozycja_x, pozycja_y),
+    )
+
+    return obraz_do_jpeg_bytes(
+        canvas,
+        jakosc=96,
+    )
+
+
+def dodaj_podglad_strefy_bezpiecznej(cover_bytes):
+    obraz = wczytaj_obraz(cover_bytes)
+    nakladka = Image.new(
+        "RGBA",
+        obraz.size,
+        (0, 0, 0, 0),
+    )
+
+    draw = ImageDraw.Draw(nakladka)
+
+    # Uniwersalna bezpieczna strefa
+    draw.rectangle(
+        (180, 48, 1460, 672),
+        outline=(255, 70, 70, 230),
+        width=4,
+    )
+
+    font = pobierz_czcionke(
+        SCIEZKA_FONT_SEMIBOLD,
+        22,
+    )
+
+    draw.rounded_rectangle(
+        (195, 60, 510, 105),
+        radius=12,
+        fill=(255, 70, 70, 210),
+    )
+
+    draw.text(
+        (215, 70),
+        "BEZPIECZNY OBSZAR",
+        fill=(255, 255, 255, 255),
+        font=font,
+    )
+
+    wynik = Image.alpha_composite(
+        obraz,
+        nakladka,
+    )
+
+    return obraz_do_jpeg_bytes(
+        wynik,
+        jakosc=93,
+    )
+
+
+# ============================================================
+# WARIANTY POSTÓW
+# ============================================================
+
 WARIANTY = {
-    "magazyn":       ("magazyn.jpg",       "magazyn", STOPKA_DOMYSLNA, False),
-    "split":         ("split.jpg",         "split",   STOPKA_DOMYSLNA, False),
-    "magazyn_bez":   ("magazyn_bez.jpg",   "magazyn", "",              False),
-    "split_bez":     ("split_bez.jpg",     "split",   "",              False),
-    "magazyn_kolor": ("magazyn_kolor.jpg", "magazyn", STOPKA_DOMYSLNA, True),
-    "split_kolor":   ("split_kolor.jpg",   "split",   STOPKA_DOMYSLNA, True),
-    "magazyn_kolor_bez": ("magazyn_kolor_bez.jpg", "magazyn", "", True),
-    "split_kolor_bez":   ("split_kolor_bez.jpg",   "split",   "", True),
+    "magazyn": (
+        "magazyn",
+        STOPKA_DOMYSLNA,
+        False,
+    ),
+    "split": (
+        "split",
+        STOPKA_DOMYSLNA,
+        False,
+    ),
+    "magazyn_bez": (
+        "magazyn",
+        "",
+        False,
+    ),
+    "split_bez": (
+        "split",
+        "",
+        False,
+    ),
+    "magazyn_kolor": (
+        "magazyn",
+        STOPKA_DOMYSLNA,
+        True,
+    ),
+    "split_kolor": (
+        "split",
+        STOPKA_DOMYSLNA,
+        True,
+    ),
+    "magazyn_kolor_bez": (
+        "magazyn",
+        "",
+        True,
+    ),
+    "split_kolor_bez": (
+        "split",
+        "",
+        True,
+    ),
 }
 
 KARTY = {
-    "magazyn":     ("Styl Magazyn",                        "📥 Pobierz Magazyn",                  "fb_magazyn.jpg",                 "Magazyn"),
-    "split":       ("Styl Split Screen",                   "📥 Pobierz Split Screen",             "fb_split.jpg",                   "Split Screen"),
-    "magazyn_bez": ("Styl Magazyn – bez komentarza",       "📥 Pobierz Magazyn (bez kom.)",       "fb_magazyn_bez_komentarza.jpg",  "Magazyn - bez komentarza"),
-    "split_bez":   ("Styl Split Screen – bez komentarza",  "📥 Pobierz Split Screen (bez kom.)",  "fb_split_bez_komentarza.jpg",    "Split Screen - bez komentarza"),
-    "magazyn_kolor": ("Magazyn – kolor ze zdjęcia",        "📥 Pobierz Magazyn (kolor)",          "fb_magazyn_kolor.jpg",           "Magazyn - kolor dominujący"),
-    "split_kolor":   ("Split Screen – kolor ze zdjęcia",   "📥 Pobierz Split Screen (kolor)",     "fb_split_kolor.jpg",             "Split Screen - kolor dominujący"),
-    "magazyn_kolor_bez": ("Magazyn – kolor ze zdjęcia",      "📥 Pobierz Magazyn (kolor, bez kom.)",      "fb_magazyn_kolor_bez_komentarza.jpg", "Magazyn - kolor dominujący - bez komentarza"),
-    "split_kolor_bez":   ("Split Screen – kolor ze zdjęcia", "📥 Pobierz Split Screen (kolor, bez kom.)", "fb_split_kolor_bez_komentarza.jpg",   "Split Screen - kolor dominujący - bez komentarza"),
+    "magazyn": (
+        "Styl Magazyn",
+        "📥 Pobierz Magazyn",
+        "fb_magazyn.jpg",
+        "Magazyn",
+    ),
+    "split": (
+        "Styl Split Screen",
+        "📥 Pobierz Split Screen",
+        "fb_split.jpg",
+        "Split Screen",
+    ),
+    "magazyn_bez": (
+        "Styl Magazyn – bez komentarza",
+        "📥 Pobierz Magazyn (bez kom.)",
+        "fb_magazyn_bez_komentarza.jpg",
+        "Magazyn - bez komentarza",
+    ),
+    "split_bez": (
+        "Styl Split Screen – bez komentarza",
+        "📥 Pobierz Split Screen (bez kom.)",
+        "fb_split_bez_komentarza.jpg",
+        "Split Screen - bez komentarza",
+    ),
+    "magazyn_kolor": (
+        "Magazyn – kolor ze zdjęcia",
+        "📥 Pobierz Magazyn (kolor)",
+        "fb_magazyn_kolor.jpg",
+        "Magazyn - kolor dominujący",
+    ),
+    "split_kolor": (
+        "Split Screen – kolor ze zdjęcia",
+        "📥 Pobierz Split Screen (kolor)",
+        "fb_split_kolor.jpg",
+        "Split Screen - kolor dominujący",
+    ),
+    "magazyn_kolor_bez": (
+        "Magazyn – kolor ze zdjęcia",
+        "📥 Pobierz Magazyn (kolor, bez kom.)",
+        "fb_magazyn_kolor_bez_komentarza.jpg",
+        "Magazyn - kolor dominujący - bez komentarza",
+    ),
+    "split_kolor_bez": (
+        "Split Screen – kolor ze zdjęcia",
+        "📥 Pobierz Split Screen (kolor, bez kom.)",
+        "fb_split_kolor_bez_komentarza.jpg",
+        "Split Screen - kolor dominujący - bez komentarza",
+    ),
 }
 
-def wygeneruj_grafiki(sciezka_zdjecia, sciezka_do_logo, tytul, is_audio, kolor_wymuszony=None):
-    gotowe = {}
-    if kolor_wymuszony:
-        kolor_ze_zdjecia = znormalizuj_kolor_podkladu(kolor_wymuszony)
-    else:
-        kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(sciezka_zdjecia)
 
-    for klucz, (plik_roboczy, styl, stopka, kolorowa) in WARIANTY.items():
-        generator = generuj_grafike_magazyn if styl == "magazyn" else generuj_grafike_split
-        kolor = kolor_ze_zdjecia if kolorowa else None
-        generator(sciezka_zdjecia, sciezka_do_logo, tytul, stopka, plik_roboczy, is_audio=is_audio, kolor_podkladu=kolor)
-        with open(plik_roboczy, "rb") as f:
-            gotowe[klucz] = f.read()
+def wygeneruj_grafiki(
+    zrodlo_zdjecia,
+    sciezka_do_logo,
+    tytul,
+    is_audio,
+    kolor_wymuszony=None,
+):
+    if kolor_wymuszony is not None:
+        kolor_ze_zdjecia = znormalizuj_kolor_podkladu(
+            kolor_wymuszony
+        )
+    else:
+        kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(
+            zrodlo_zdjecia
+        )
+
+    gotowe = {}
+
+    for klucz, (
+        styl,
+        stopka,
+        kolorowa,
+    ) in WARIANTY.items():
+
+        kolor = (
+            kolor_ze_zdjecia
+            if kolorowa
+            else None
+        )
+
+        if styl == "magazyn":
+            wynik = generuj_grafike_magazyn(
+                zrodlo_zdjecia=zrodlo_zdjecia,
+                sciezka_logo=sciezka_do_logo,
+                tekst_glowny=tytul,
+                tekst_stopki=stopka,
+                is_audio=is_audio,
+                kolor_podkladu=kolor,
+            )
+        else:
+            wynik = generuj_grafike_split(
+                zrodlo_zdjecia=zrodlo_zdjecia,
+                sciezka_logo=sciezka_do_logo,
+                tekst_glowny=tytul,
+                tekst_stopki=stopka,
+                is_audio=is_audio,
+                kolor_podkladu=kolor,
+            )
+
+        gotowe[klucz] = wynik
+
     return gotowe, kolor_ze_zdjecia
 
-# ==========================================
-# INTERFEJS STREAMLIT 
-# ==========================================
-st.set_page_config(page_title="Generator Postów FB", page_icon="🎨", layout="centered")
+
+# ============================================================
+# ANALITYKA GOOGLE SHEETS
+# ============================================================
+
+def aktualizuj_licznik(styl_grafiki, uzyte_logo):
+    nazwa_marki = (
+        uzyte_logo
+        if uzyte_logo
+        else "BRAK LOGA"
+    )
+
+    teraz = datetime.datetime.now(
+        ZoneInfo("Europe/Warsaw")
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        if "GOOGLE_CREDENTIALS_JSON" not in st.secrets:
+            return
+
+        creds_json = json.loads(
+            st.secrets["GOOGLE_CREDENTIALS_JSON"]
+        )
+
+        gc = gspread.service_account_from_dict(
+            creds_json
+        )
+
+        arkusz = gc.open(
+            "Statystyki_Grafik_FB"
+        )
+
+        worksheet = arkusz.sheet1
+
+        worksheet.append_row(
+            [
+                teraz,
+                styl_grafiki,
+                nazwa_marki,
+            ],
+            value_input_option="RAW",
+        )
+
+        print(
+            "✅ Zapisano statystykę:",
+            styl_grafiki,
+            nazwa_marki,
+        )
+
+    except Exception as blad:
+        print(
+            "❌ Błąd zapisu do Arkuszy Google:",
+            blad,
+        )
+
+
+# ============================================================
+# INTERFEJS STREAMLIT
+# ============================================================
+
+st.set_page_config(
+    page_title="Generator Postów FB",
+    page_icon="🎨",
+    layout="centered",
+)
 
 st.title("🎨 Automatyczny Generator Grafik")
-st.write("Wybierz rodzaj grafiki, którą chcesz stworzyć w zakładkach poniżej.")
-st.caption(f"wersja {WERSJA_APP}")
+st.write(
+    "Wybierz rodzaj grafiki, którą chcesz stworzyć."
+)
+st.caption(f"Wersja {WERSJA_APP}")
 
-pobierz_nowoczesne_czcionki()
+try:
+    przygotuj_czcionki()
+except Exception as blad:
+    st.error(str(blad))
+    st.info(
+        "Dodaj pliki Montserrat-Bold.ttf i "
+        "Montserrat-SemiBold.ttf do katalogu assets/fonts."
+    )
+    st.stop()
 
-if not os.path.exists("logotypy"):
-    os.makedirs("logotypy")
 
+# ============================================================
+# LOGOTYPY
+# ============================================================
+
+KATALOG_LOGOTYPOW = "logotypy"
 OPCJA_BEZ_LOGA = "❌ Bez loga"
-dostepne_loga = [f for f in os.listdir("logotypy") if f.endswith(('.png', '.jpg'))]
+
+os.makedirs(
+    KATALOG_LOGOTYPOW,
+    exist_ok=True,
+)
+
+dostepne_loga = [
+    plik
+    for plik in os.listdir(KATALOG_LOGOTYPOW)
+    if plik.lower().endswith(
+        (".png", ".jpg", ".jpeg", ".webp")
+    )
+]
+
+dostepne_loga.sort(
+    key=str.lower
+)
 
 if dostepne_loga:
-    dostepne_loga.sort()
-    bd_logo_index = next((i for i, v in enumerate(dostepne_loga) if "budujemydom" in v.lower()), None)
-    
-    if bd_logo_index is not None:
-        bd_logo = dostepne_loga.pop(bd_logo_index)
-        dostepne_loga.insert(0, bd_logo)
+    indeks_bd = next(
+        (
+            i
+            for i, nazwa in enumerate(dostepne_loga)
+            if "budujemydom" in nazwa.lower()
+        ),
+        None,
+    )
+
+    if indeks_bd is not None:
+        logo_bd = dostepne_loga.pop(indeks_bd)
+        dostepne_loga.insert(0, logo_bd)
         dostepne_loga.insert(1, OPCJA_BEZ_LOGA)
     else:
         dostepne_loga.insert(0, OPCJA_BEZ_LOGA)
 else:
     dostepne_loga = [OPCJA_BEZ_LOGA]
 
-if 'wygenerowano' not in st.session_state:
+
+if "wygenerowano" not in st.session_state:
     st.session_state.wygenerowano = False
 
 
-tab1, tab2 = st.tabs(["📲 Posty do artykułu", "🖼️ Cover na Facebooka (Top)"])
+tab1, tab2 = st.tabs(
+    [
+        "📲 Posty do artykułu",
+        "🖼️ Nowoczesny cover FB",
+    ]
+)
 
-# ----------------------------------------------------
-# ZAKŁADKA 1: POSTY Z LINKU
-# ----------------------------------------------------
+
+# ============================================================
+# ZAKŁADKA 1 – POSTY
+# ============================================================
+
 with tab1:
-    wybrane_logo = st.selectbox("Wybierz markę (logo):", dostepne_loga, key="logo_posty")
-    url_input = st.text_input("🔗 Link do artykułu:")
-    
-    if st.button("🚀 Pobierz i Generuj Grafiki", type="primary"):
-        if url_input:
-            with st.spinner("Pobieram dane ze strony i renderuję domyślne grafiki..."):
-                sciezka_do_logo = None if wybrane_logo == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo)
-                is_audio_brand = bool(wybrane_logo and wybrane_logo != OPCJA_BEZ_LOGA and "audio" in wybrane_logo.lower())
-                
-                tytul, zdjecie_tmp = pobierz_dane_z_artykulu(url_input)
-                
-                if tytul and zdjecie_tmp:
-                    st.session_state.sciezka_zdjecia_tmp = zdjecie_tmp
+    wybrane_logo = st.selectbox(
+        "Wybierz markę (logo):",
+        dostepne_loga,
+        key="logo_posty",
+    )
+
+    url_input = st.text_input(
+        "🔗 Link do artykułu:",
+        placeholder="https://...",
+    )
+
+    if st.button(
+        "🚀 Pobierz i generuj grafiki",
+        type="primary",
+        use_container_width=True,
+    ):
+        if not url_input.strip():
+            st.warning("Najpierw wklej link.")
+        else:
+            with st.spinner(
+                "Pobieram artykuł i generuję grafiki..."
+            ):
+                try:
+                    sciezka_do_logo = (
+                        None
+                        if wybrane_logo == OPCJA_BEZ_LOGA
+                        else os.path.join(
+                            KATALOG_LOGOTYPOW,
+                            wybrane_logo,
+                        )
+                    )
+
+                    is_audio_brand = bool(
+                        wybrane_logo != OPCJA_BEZ_LOGA
+                        and "audio" in wybrane_logo.lower()
+                    )
+
+                    tytul, obraz_bytes = pobierz_dane_z_artykulu(
+                        url_input.strip()
+                    )
+
+                    grafiki, kolor_uzyty = wygeneruj_grafiki(
+                        zrodlo_zdjecia=obraz_bytes,
+                        sciezka_do_logo=sciezka_do_logo,
+                        tytul=tytul,
+                        is_audio=is_audio_brand,
+                    )
+
+                    st.session_state.obraz_artykulu = obraz_bytes
                     st.session_state.aktualny_tytul = tytul
                     st.session_state.sciezka_do_logo = sciezka_do_logo
                     st.session_state.is_audio_brand = is_audio_brand
                     st.session_state.logo_nazwa = wybrane_logo
-                    st.session_state.kolor_reczny = None  
-                    
-                    st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
-                        zdjecie_tmp, sciezka_do_logo, tytul, is_audio_brand
-                    )
+                    st.session_state.kolor_reczny = None
+                    st.session_state.grafiki = grafiki
+                    st.session_state.kolor_uzyty = kolor_uzyty
                     st.session_state.wygenerowano = True
-                else:
-                    st.error("Wystąpił błąd podczas pobierania danych. Sprawdź, czy link jest poprawny.")
-        else:
-            st.warning("Najpierw wklej link!")
 
-    if st.session_state.get('wygenerowano', False):
-        bezpieczny_tytul = st.session_state.get('aktualny_tytul', 'Twojego artykułu')
-        st.success(f"Oto Twoje grafiki dla: {bezpieczny_tytul}")
-        
+                except Exception as blad:
+                    st.session_state.wygenerowano = False
+
+                    st.error(
+                        "Nie udało się pobrać artykułu "
+                        "lub wygenerować grafik."
+                    )
+
+                    st.caption(str(blad))
+
+    if st.session_state.get("wygenerowano", False):
+        bezpieczny_tytul = st.session_state.get(
+            "aktualny_tytul",
+            "Twojego artykułu",
+        )
+
+        st.success(
+            f"Grafiki dla: {bezpieczny_tytul}"
+        )
+
         def pokaz_pare(klucze):
             kolumny = st.columns(2)
-            for kolumna, klucz in zip(kolumny, klucze):
-                podpis, etykieta, nazwa_pliku, nazwa_statystyki = KARTY[klucz]
+
+            for kolumna, klucz in zip(
+                kolumny,
+                klucze,
+            ):
+                (
+                    podpis,
+                    etykieta,
+                    nazwa_pliku,
+                    nazwa_statystyki,
+                ) = KARTY[klucz]
+
                 with kolumna:
-                    st.image(st.session_state.grafiki[klucz], caption=podpis)
+                    st.image(
+                        st.session_state.grafiki[klucz],
+                        caption=podpis,
+                        use_container_width=True,
+                    )
+
                     st.download_button(
                         label=etykieta,
                         data=st.session_state.grafiki[klucz],
                         file_name=nazwa_pliku,
                         mime="image/jpeg",
-                        width="stretch",
+                        use_container_width=True,
                         key=f"pobierz_{klucz}",
                         on_click=aktualizuj_licznik,
-                        args=(nazwa_statystyki, st.session_state.get('logo_nazwa'))
+                        args=(
+                            nazwa_statystyki,
+                            st.session_state.get(
+                                "logo_nazwa"
+                            ),
+                        ),
                     )
 
         z_komentarzem = st.toggle(
             "Napis „ARTYKUŁ W KOMENTARZU”",
             value=True,
-            help="Wyłącz, żeby te same 4 grafiki pokazały się w wersji bez stopki."
+            help=(
+                "Wyłącz, aby pokazać warianty "
+                "bez stopki."
+            ),
         )
-        sufiks = "" if z_komentarzem else "_bez"
+
+        sufiks = (
+            ""
+            if z_komentarzem
+            else "_bez"
+        )
 
         st.subheader("🎨 Kolor ze zdjęcia")
-        st.caption("Podlewka w kolorze wyliczonym z całego zdjęcia (ważonym powierzchnią). Zdjęcie bez wyraźnej barwy – np. szara łazienka – da ciemny grafit, a nie przypadkowy kolor.")
-        pokaz_pare([f"magazyn_kolor{sufiks}", f"split_kolor{sufiks}"])
 
-        kolor_uzyty = st.session_state.get('kolor_uzyty')
+        st.caption(
+            "Kolor podlewki jest wyliczany ze zdjęcia. "
+            "Możesz go później zmienić ręcznie."
+        )
+
+        pokaz_pare(
+            [
+                f"magazyn_kolor{sufiks}",
+                f"split_kolor{sufiks}",
+            ]
+        )
+
+        kolor_uzyty = st.session_state.get(
+            "kolor_uzyty"
+        )
+
         if kolor_uzyty:
-            hex_uzyty = "#{:02x}{:02x}{:02x}".format(*kolor_uzyty)
-            with st.expander(f"🎚️ Kolor podlewki: {hex_uzyty} – zmień ręcznie"):
-                st.caption("Wybrany kolor i tak zostanie przyciemniony do poziomu, przy którym biały napis pozostaje czytelny.")
-                nowy_kolor = st.color_picker("Wybierz kolor:", value=hex_uzyty)
+            hex_uzyty = rgb_na_hex(
+                kolor_uzyty
+            )
+
+            with st.expander(
+                f"🎚️ Kolor podlewki: {hex_uzyty}"
+            ):
+                st.caption(
+                    "Wybrany kolor zostanie przyciemniony, "
+                    "aby biały tekst pozostał czytelny."
+                )
+
+                nowy_kolor = st.color_picker(
+                    "Wybierz kolor:",
+                    value=hex_uzyty,
+                )
+
                 kol_a, kol_b = st.columns(2)
 
-                def przelicz(kolor_wymuszony):
-                    st.session_state.kolor_reczny = kolor_wymuszony
-                    st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
-                        st.session_state.sciezka_zdjecia_tmp,
-                        st.session_state.sciezka_do_logo,
-                        st.session_state.aktualny_tytul,
-                        st.session_state.is_audio_brand,
-                        kolor_wymuszony=kolor_wymuszony
+                def przelicz_posty(kolor_wymuszony):
+                    (
+                        st.session_state.grafiki,
+                        st.session_state.kolor_uzyty,
+                    ) = wygeneruj_grafiki(
+                        zrodlo_zdjecia=(
+                            st.session_state.obraz_artykulu
+                        ),
+                        sciezka_do_logo=(
+                            st.session_state.sciezka_do_logo
+                        ),
+                        tytul=(
+                            st.session_state.aktualny_tytul
+                        ),
+                        is_audio=(
+                            st.session_state.is_audio_brand
+                        ),
+                        kolor_wymuszony=kolor_wymuszony,
                     )
 
-                if kol_a.button("🎨 Zastosuj ten kolor", width="stretch"):
-                    with st.spinner("Przeliczam..."):
-                        przelicz(tuple(int(nowy_kolor.lstrip("#")[i:i+2], 16) for i in (0, 2, 4)))
+                    st.session_state.kolor_reczny = (
+                        kolor_wymuszony
+                    )
+
+                if kol_a.button(
+                    "🎨 Zastosuj kolor",
+                    use_container_width=True,
+                ):
+                    with st.spinner("Przeliczam grafiki..."):
+                        przelicz_posty(
+                            hex_na_rgb(nowy_kolor)
+                        )
+
                     st.rerun()
 
-                if kol_b.button("↩️ Wróć do koloru ze zdjęcia", width="stretch"):
-                    with st.spinner("Przeliczam..."):
-                        przelicz(None)
+                if kol_b.button(
+                    "↩️ Kolor ze zdjęcia",
+                    use_container_width=True,
+                ):
+                    with st.spinner("Przeliczam grafiki..."):
+                        przelicz_posty(None)
+
                     st.rerun()
 
         st.markdown("---")
         st.subheader("⬛ Klasyczne, czarne")
-        pokaz_pare([f"magazyn{sufiks}", f"split{sufiks}"])
+
+        pokaz_pare(
+            [
+                f"magazyn{sufiks}",
+                f"split{sufiks}",
+            ]
+        )
 
         st.markdown("---")
-        st.subheader("✍️ Chcesz coś poprawić?")
-        
-        nowy_tytul = st.text_area("Edytuj tytuł (użyj Enter by złamać linię. Wstaw znak '|', by tekst po nim był mniejszym podtytułem):", value=st.session_state.aktualny_tytul, height=100)
-        
-        if st.button("🔄 Zaktualizuj napisy"):
+        st.subheader("✍️ Edycja tytułu")
+
+        nowy_tytul = st.text_area(
+            (
+                "Edytuj tytuł. Enter wymusza nową linię. "
+                "Znak „|” rozpoczyna mniejszy podtytuł:"
+            ),
+            value=st.session_state.aktualny_tytul,
+            height=110,
+        )
+
+        if st.button(
+            "🔄 Zaktualizuj napisy",
+            use_container_width=True,
+        ):
             with st.spinner("Odświeżam grafiki..."):
-                st.session_state.grafiki, st.session_state.kolor_uzyty = wygeneruj_grafiki(
-                    st.session_state.sciezka_zdjecia_tmp,
-                    st.session_state.sciezka_do_logo,
-                    nowy_tytul,
-                    st.session_state.is_audio_brand,
-                    kolor_wymuszony=st.session_state.get('kolor_reczny')
-                )
-                st.session_state.aktualny_tytul = nowy_tytul
-                st.rerun()
-
-# ----------------------------------------------------
-# ZAKŁADKA 2: COVER NA FB
-# ----------------------------------------------------
-with tab2:
-    st.info("💡 Ta zakładka wygeneruje dla Ciebie grafikę o wymiarach 1640x624 px z prawostronnym wyrównaniem tekstu i wklejoną okładką z cieniem po prawej stronie.")
-    
-    cnw_logo_index = next((i for i, v in enumerate(dostepne_loga) if "czas" in v.lower() or "wnetrze" in v.lower()), 0)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        wybrane_logo_cover = st.selectbox("Wybierz logo:", dostepne_loga, index=cnw_logo_index, key="logo_cover")
-        wgrana_okladka = st.file_uploader("Wgraj plik okładki (JPG/PNG):", type=['jpg', 'jpeg', 'png'])
-    with col2:
-        tekst_gora = st.text_input("Tekst górny:", value="Najnowsze wydanie już dostępne")
-        tekst_dol = st.text_input("Tekst dolny (np. data):", value="PAŹDZIERNIK 2026")
-        kolor_reczny = st.color_picker("Wymuś kolor tła (zostaw domyślny, aby pobrać z okładki):", value="#E5D1D4")
-
-    if st.button("🎨 Generuj Cover", type="primary"):
-        if wgrana_okladka is not None:
-            with st.spinner("Przetwarzam cover..."):
-                sciezka_okladki = "tymczasowa_okladka.jpg"
-                with open(sciezka_okladki, "wb") as f:
-                    f.write(wgrana_okladka.getbuffer())
-                
-                sciezka_do_logo_cover = None if wybrane_logo_cover == OPCJA_BEZ_LOGA else os.path.join("logotypy", wybrane_logo_cover)
-                
-                if kolor_reczny == "#E5D1D4": 
-                    kolor_tla = kolor_pastelowy_ze_zdjecia(sciezka_okladki) 
-                else:
-                    kolor_tla = tuple(int(kolor_reczny.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
-
-                nazwa_covera = "wygenerowany_cover.jpg"
-                generuj_cover_fb(sciezka_okladki, sciezka_do_logo_cover, tekst_gora, tekst_dol, nazwa_covera, kolor_tla)
-                
-                st.success("Cover wygenerowany pomyślnie!")
-                st.image(nazwa_covera, use_container_width=True)
-                
-                with open(nazwa_covera, "rb") as file:
-                    st.download_button(
-                        label="📥 Pobierz Cover",
-                        data=file,
-                        file_name="Cover_FB.jpg",
-                        mime="image/jpeg"
+                try:
+                    (
+                        st.session_state.grafiki,
+                        st.session_state.kolor_uzyty,
+                    ) = wygeneruj_grafiki(
+                        zrodlo_zdjecia=(
+                            st.session_state.obraz_artykulu
+                        ),
+                        sciezka_do_logo=(
+                            st.session_state.sciezka_do_logo
+                        ),
+                        tytul=nowy_tytul,
+                        is_audio=(
+                            st.session_state.is_audio_brand
+                        ),
+                        kolor_wymuszony=(
+                            st.session_state.get(
+                                "kolor_reczny"
+                            )
+                        ),
                     )
+
+                    st.session_state.aktualny_tytul = (
+                        nowy_tytul
+                    )
+
+                    st.rerun()
+
+                except Exception as blad:
+                    st.error(
+                        f"Nie udało się zaktualizować grafik: {blad}"
+                    )
+
+
+# ============================================================
+# ZAKŁADKA 2 – COVER
+# ============================================================
+
+with tab2:
+    st.info(
+        "Nowoczesny cover ma rozmiar 1640 × 720 px. "
+        "Najważniejsze elementy są umieszczane w centralnej "
+        "strefie bezpiecznej dla desktopu i telefonu."
+    )
+
+    indeks_cnw = next(
+        (
+            i
+            for i, nazwa in enumerate(dostepne_loga)
+            if (
+                "czas" in nazwa.lower()
+                or "wnetrze" in nazwa.lower()
+                or "wnętrze" in nazwa.lower()
+            )
+        ),
+        0,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        wybrane_logo_cover = st.selectbox(
+            "Wybierz logo:",
+            dostepne_loga,
+            index=indeks_cnw,
+            key="logo_cover",
+        )
+
+        wgrana_okladka = st.file_uploader(
+            "Wgraj okładkę JPG, PNG lub WEBP:",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="okladka_cover",
+        )
+
+    with col2:
+        tekst_gora = st.text_input(
+            "Główny tekst:",
+            value="Najnowsze wydanie już dostępne",
+        )
+
+        tekst_dol = st.text_input(
+            "Data lub krótka informacja:",
+            value="PAŹDZIERNIK 2026",
+        )
+
+        auto_kolor_covera = st.checkbox(
+            "Automatycznie dobierz kolor z okładki",
+            value=True,
+        )
+
+        kolor_reczny_covera = st.color_picker(
+            "Ręczny kolor tła:",
+            value="#E5D1D4",
+            disabled=auto_kolor_covera,
+        )
+
+        pokaz_strefe = st.checkbox(
+            "Pokaż strefę bezpieczną w podglądzie",
+            value=False,
+            help=(
+                "Czerwona ramka pojawia się tylko "
+                "w podglądzie, nie w pobieranym pliku."
+            ),
+        )
+
+    if st.button(
+        "🎨 Generuj nowoczesny cover",
+        type="primary",
+        use_container_width=True,
+    ):
+        if wgrana_okladka is None:
+            st.warning(
+                "Najpierw wgraj plik z okładką."
+            )
         else:
-            st.warning("Najpierw wgraj plik z okładką!")
+            with st.spinner(
+                "Projektuję nowoczesny cover..."
+            ):
+                try:
+                    dane_okladki = wgrana_okladka.getvalue()
+
+                    # Walidacja pliku obrazu
+                    wczytaj_obraz(dane_okladki)
+
+                    sciezka_logo_cover = (
+                        None
+                        if wybrane_logo_cover == OPCJA_BEZ_LOGA
+                        else os.path.join(
+                            KATALOG_LOGOTYPOW,
+                            wybrane_logo_cover,
+                        )
+                    )
+
+                    if auto_kolor_covera:
+                        kolor_tla = kolor_pastelowy_ze_zdjecia(
+                            dane_okladki
+                        )
+                    else:
+                        kolor_tla = hex_na_rgb(
+                            kolor_reczny_covera
+                        )
+
+                    cover_bytes = generuj_cover_fb(
+                        zrodlo_okladki=dane_okladki,
+                        sciezka_logo=sciezka_logo_cover,
+                        tekst_gora=tekst_gora,
+                        tekst_dol=tekst_dol,
+                        kolor_tla=kolor_tla,
+                    )
+
+                    st.session_state.cover_bytes = cover_bytes
+                    st.session_state.cover_kolor = kolor_tla
+                    st.session_state.cover_wygenerowany = True
+
+                    st.success(
+                        "Cover został wygenerowany."
+                    )
+
+                except Exception as blad:
+                    st.session_state.cover_wygenerowany = False
+
+                    st.error(
+                        "Nie udało się wygenerować covera."
+                    )
+
+                    st.caption(str(blad))
+
+    if st.session_state.get(
+        "cover_wygenerowany",
+        False,
+    ):
+        cover_bytes = st.session_state.cover_bytes
+
+        if pokaz_strefe:
+            podglad_covera = dodaj_podglad_strefy_bezpiecznej(
+                cover_bytes
+            )
+        else:
+            podglad_covera = cover_bytes
+
+        st.image(
+            podglad_covera,
+            caption=(
+                "Podgląd covera"
+                + (
+                    " ze strefą bezpieczną"
+                    if pokaz_strefe
+                    else ""
+                )
+            ),
+            use_container_width=True,
+        )
+
+        kolor_covera = st.session_state.get(
+            "cover_kolor"
+        )
+
+        if kolor_covera:
+            st.caption(
+                f"Kolor bazowy: {rgb_na_hex(kolor_covera)}"
+            )
+
+        st.download_button(
+            label="📥 Pobierz Cover FB",
+            data=cover_bytes,
+            file_name="Cover_FB_1640x720.jpg",
+            mime="image/jpeg",
+            use_container_width=True,
+            on_click=aktualizuj_licznik,
+            args=(
+                "Nowoczesny Cover FB",
+                wybrane_logo_cover,
+            ),
+        )
