@@ -877,7 +877,15 @@ def dopasuj_tekst(
         ):
             continue
 
-        if wysokosc_bloku <= maks_wysokosc:
+        # Nowy warunek: sprawdzamy, czy jakaś linia (np. długi link) 
+        # nie przekracza dopuszczalnej szerokości
+        za_szerokie = any(
+            szerokosc_tekstu(font, linia) > maks_szerokosc 
+            for linia in linie
+        )
+
+        # Akceptujemy rozmiar tylko wtedy, gdy mieści się i na wysokość, i na szerokość
+        if wysokosc_bloku <= maks_wysokosc and not za_szerokie:
             return (
                 font,
                 linie,
@@ -1965,7 +1973,7 @@ def generuj_cover_fb(
         tekst=tekst_gora,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
         maks_rozmiar=61,
-        min_rozmiar=38,
+        min_rozmiar=26,  # <--- Zmieniono z 38 na 26
         maks_szerokosc=690,
         maks_wysokosc=220,
         odstep_linii=10,
