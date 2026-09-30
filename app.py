@@ -1376,65 +1376,127 @@ def generuj_cover_fb(
     tekst_dol,
     kolor_tla,
 ):
-    canvas, kolor_lewej_czesci = utworz_gradient_covera(
-        kolor_tla
+    szerokosc = SZEROKOSC_COVERA
+    wysokosc = WYSOKOSC_COVERA
+
+    # ========================================================
+    # 1. SUBTELNE TŁO
+    # ========================================================
+
+    kolor_lewy = mieszaj_kolory(
+        kolor_tla,
+        (255, 255, 255),
+        0.25,
     )
+
+    kolor_prawy = mieszaj_kolory(
+        kolor_tla,
+        (235, 235, 235),
+        0.08,
+    )
+
+    canvas = Image.new(
+        "RGBA",
+        (szerokosc, wysokosc),
+        kolor_lewy + (255,),
+    )
+
+    draw = ImageDraw.Draw(canvas)
+
+    # Delikatny gradient
+    for x in range(szerokosc):
+        postep = x / max(1, szerokosc - 1)
+
+        kolor = mieszaj_kolory(
+            kolor_lewy,
+            kolor_prawy,
+            postep,
+        )
+
+        draw.line(
+            [(x, 0), (x, wysokosc)],
+            fill=kolor + (255,),
+        )
+
+    # ========================================================
+    # 2. KOLORY I DEKORACJE
+    # ========================================================
 
     kolor_tekstu = kolor_tekstu_dla_tla(
-        kolor_lewej_czesci
+        kolor_lewy
     )
 
-    kolor_pomocniczy = kolor_drugoplanowy(
-        kolor_tekstu
+    czy_jasny_tekst = (
+        kolor_tekstu[:3] == (255, 255, 255)
     )
 
-    dekoracje = Image.new(
+    if czy_jasny_tekst:
+        kolor_pomocniczy = (225, 225, 225, 255)
+        kolor_akcentu = (255, 255, 255, 255)
+        kolor_badge = (255, 255, 255, 255)
+        kolor_badge_tekstu = (28, 28, 32, 255)
+    else:
+        kolor_pomocniczy = (82, 78, 74, 255)
+
+        kolor_akcentu_rgb = mieszaj_kolory(
+            kolor_tla,
+            (30, 30, 34),
+            0.48,
+        )
+
+        kolor_akcentu = kolor_akcentu_rgb + (255,)
+        kolor_badge = kolor_akcentu
+        kolor_badge_tekstu = (255, 255, 255, 255)
+
+    # Subtelna pionowa linia po lewej stronie tekstu
+    draw.rounded_rectangle(
+        (168, 267, 176, 535),
+        radius=4,
+        fill=kolor_akcentu,
+    )
+
+    # Bardzo delikatna dekoracja za okładką
+    dekoracja = Image.new(
         "RGBA",
         canvas.size,
         (0, 0, 0, 0),
     )
 
-    draw_dekoracje = ImageDraw.Draw(dekoracje)
+    draw_dekoracja = ImageDraw.Draw(dekoracja)
 
-    kolor_kola = mieszaj_kolory(
-        kolor_tla,
-        (255, 255, 255),
-        0.34,
-    )
-
-    draw_dekoracje.ellipse(
-        (990, 45, 1590, 680),
-        fill=kolor_kola + (115,),
-    )
-
-    draw_dekoracje.ellipse(
-        (1160, 155, 1640, 650),
-        outline=(255, 255, 255, 65),
-        width=3,
-    )
-
-    draw_dekoracje.line(
-        [(1000, 120), (1490, 70)],
+    draw_dekoracja.ellipse(
+        (1030, 60, 1585, 660),
         fill=(255, 255, 255, 45),
-        width=2,
+    )
+
+    draw_dekoracja.ellipse(
+        (1110, 125, 1530, 600),
+        outline=(255, 255, 255, 80),
+        width=3,
     )
 
     canvas = Image.alpha_composite(
         canvas,
-        dekoracje,
+        dekoracja,
     )
 
-    # Bezpieczny obszar:
-    # X: 180–1460
-    # Y: 48–672
-    tekst_x = 220
-    maks_szerokosc_tekstu = 680
-    y = 105
+    # Ponowna inicjalizacja draw po alpha_composite
+    draw = ImageDraw.Draw(canvas)
+
+    # ========================================================
+    # 3. LOGO
+    # ========================================================
+
+    tekst_x = 215
+    y = 92
 
     if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = wczytaj_obraz(sciezka_logo)
+        logo = wczytaj_obraz(
+            sciezka_logo
+        )
+
         logo.thumbnail(
-            (480, 115),
+            (440, 115),
             Image.Resampling.LANCZOS,
         )
 
@@ -1443,88 +1505,90 @@ def generuj_cover_fb(
             (tekst_x, y),
         )
 
-        y += logo.height + 46
+        y += logo.height + 55
     else:
-        y += 18
+        y = 145
+
+    # ========================================================
+    # 4. MAŁA ETYKIETA NAD TYTUŁEM
+    # ========================================================
 
     font_etykieta = pobierz_czcionke(
         SCIEZKA_FONT_SEMIBOLD,
-        25,
+        23,
     )
 
     etykieta = "NOWE WYDANIE"
 
-    rysuj_tekst(
-        canvas,
+    draw.text(
         (tekst_x, y),
         etykieta,
-        font_etykieta,
-        kolor_pomocniczy,
+        font=font_etykieta,
+        fill=kolor_pomocniczy,
     )
 
-    y += 58
+    y += 52
+
+    # ========================================================
+    # 5. GŁÓWNY TYTUŁ
+    # ========================================================
 
     tekst_gora = (
         tekst_gora.strip()
-        or "Najnowsze wydanie już dostępne"
+        or "Nowy numer już dostępny"
     )
 
     font_glowny, linie_glowne, wysokosc_linii = dopasuj_tekst(
         tekst=tekst_gora,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
-        maks_rozmiar=66,
+        maks_rozmiar=61,
         min_rozmiar=40,
-        maks_szerokosc=maks_szerokosc_tekstu,
-        maks_wysokosc=235,
+        maks_szerokosc=720,
+        maks_wysokosc=225,
         odstep_linii=10,
         maks_linii=3,
     )
 
     for linia in linie_glowne:
-        rysuj_tekst(
-            canvas,
+        draw.text(
             (tekst_x, y),
             linia,
-            font_glowny,
-            kolor_tekstu,
+            font=font_glowny,
+            fill=kolor_tekstu,
         )
 
         y += wysokosc_linii
 
-    y += 28
+    # ========================================================
+    # 6. DATA / INFORMACJA W ETYKIECIE
+    # ========================================================
+
+    y += 29
 
     tekst_dol = tekst_dol.strip().upper()
 
     if tekst_dol:
         font_badge = pobierz_czcionke(
             SCIEZKA_FONT_SEMIBOLD,
-            27,
+            24,
         )
 
-        szer_badge_tekstu = szerokosc_tekstu(
+        szerokosc_napisu = szerokosc_tekstu(
             font_badge,
             tekst_dol,
         )
 
-        padding_x = 30
-        wysokosc_badge = 58
+        padding_x = 28
+        wysokosc_badge = 54
+
         szerokosc_badge = int(
-            szer_badge_tekstu + 2 * padding_x
+            szerokosc_napisu + padding_x * 2
         )
 
         szerokosc_badge = min(
             szerokosc_badge,
-            maks_szerokosc_tekstu,
+            520,
         )
-
-        if kolor_tekstu[:3] == (255, 255, 255):
-            kolor_badge = (255, 255, 255, 32)
-            obrys_badge = (255, 255, 255, 90)
-        else:
-            kolor_badge = (25, 25, 30, 18)
-            obrys_badge = (25, 25, 30, 65)
-
-        draw = ImageDraw.Draw(canvas)
 
         draw.rounded_rectangle(
             (
@@ -1533,78 +1597,83 @@ def generuj_cover_fb(
                 tekst_x + szerokosc_badge,
                 y + wysokosc_badge,
             ),
-            radius=29,
+            radius=27,
             fill=kolor_badge,
-            outline=obrys_badge,
-            width=2,
         )
 
-        rysuj_tekst(
-            canvas,
+        # Używamy bezpośrednio ImageDraw zamiast Pilmoji.
+        # Dzięki temu data zawsze zostanie narysowana.
+        draw.text(
             (
                 tekst_x + szerokosc_badge / 2,
-                y + wysokosc_badge / 2 - 1,
+                y + wysokosc_badge / 2,
             ),
             tekst_dol,
-            font_badge,
-            kolor_tekstu,
+            font=font_badge,
+            fill=kolor_badge_tekstu,
             anchor="mm",
         )
 
-    # Okładka
-    okladka = wczytaj_obraz(zrodlo_okladki)
+    # ========================================================
+    # 7. OKŁADKA MAGAZYNU
+    # ========================================================
+
+    okladka = wczytaj_obraz(
+        zrodlo_okladki
+    )
+
+    # Okładka nie może zdominować całego covera
     okladka.thumbnail(
-        (430, 555),
+        (410, 545),
         Image.Resampling.LANCZOS,
     )
 
-    # Delikatne obramowanie
-    ramka = Image.new(
-        "RGBA",
-        (okladka.width + 10, okladka.height + 10),
-        (255, 255, 255, 235),
-    )
-
-    ramka.alpha_composite(
+    # Cienka, elegancka ramka
+    okladka_z_ramką = ImageOps.expand(
         okladka,
-        (5, 5),
+        border=5,
+        fill=(255, 255, 255, 255),
     )
 
-    okladka_obrocona = ramka.rotate(
-        -1.4,
+    # Minimalny obrót – mniej agresywny niż wcześniej
+    okladka_z_ramką = okladka_z_ramką.rotate(
+        -0.7,
         resample=Image.Resampling.BICUBIC,
         expand=True,
     )
 
     pozycja_x = 1060
-    pozycja_y = (
-        WYSOKOSC_COVERA - okladka_obrocona.height
-    ) // 2
-
-    pozycja_x = min(
-        pozycja_x,
-        1460 - okladka_obrocona.width,
+    pozycja_y = int(
+        (wysokosc - okladka_z_ramką.height) / 2
     )
 
-    pozycja_x = max(
-        pozycja_x,
-        930,
+    # Pilnujemy bezpiecznej prawej krawędzi
+    if pozycja_x + okladka_z_ramką.width > 1480:
+        pozycja_x = (
+            1480 - okladka_z_ramką.width
+        )
+
+    # ========================================================
+    # 8. MIĘKKI CIEŃ
+    # ========================================================
+
+    maska_okladki = okladka_z_ramką.getchannel(
+        "A"
     )
 
-    # Cień pod okładką
-    maska = okladka_obrocona.getchannel("A")
-
-    cien_elementu = Image.new(
+    element_cienia = Image.new(
         "RGBA",
-        okladka_obrocona.size,
-        (12, 12, 18, 0),
+        okladka_z_ramką.size,
+        (25, 22, 20, 0),
     )
 
-    maska_cienia = maska.point(
-        lambda alfa: int(alfa * 0.42)
+    maska_cienia = maska_okladki.point(
+        lambda alfa: int(alfa * 0.32)
     )
 
-    cien_elementu.putalpha(maska_cienia)
+    element_cienia.putalpha(
+        maska_cienia
+    )
 
     warstwa_cienia = Image.new(
         "RGBA",
@@ -1613,15 +1682,15 @@ def generuj_cover_fb(
     )
 
     warstwa_cienia.alpha_composite(
-        cien_elementu,
+        element_cienia,
         (
-            pozycja_x + 22,
-            pozycja_y + 25,
+            pozycja_x + 18,
+            pozycja_y + 24,
         ),
     )
 
     warstwa_cienia = warstwa_cienia.filter(
-        ImageFilter.GaussianBlur(25)
+        ImageFilter.GaussianBlur(24)
     )
 
     canvas = Image.alpha_composite(
@@ -1630,8 +1699,11 @@ def generuj_cover_fb(
     )
 
     canvas.alpha_composite(
-        okladka_obrocona,
-        (pozycja_x, pozycja_y),
+        okladka_z_ramką,
+        (
+            pozycja_x,
+            pozycja_y,
+        ),
     )
 
     return obraz_do_jpeg_bytes(
@@ -2298,7 +2370,7 @@ with tab2:
     with col2:
         tekst_gora = st.text_input(
             "Główny tekst:",
-            value="Najnowsze wydanie już dostępne",
+            value="Nowy numer już dostępny",
         )
 
         tekst_dol = st.text_input(
