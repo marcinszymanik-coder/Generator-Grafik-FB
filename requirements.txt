@@ -3,4 +3,5 @@ requests
 beautifulsoup4
 Pillow
 gspread
+google-auth
 pilmoji
