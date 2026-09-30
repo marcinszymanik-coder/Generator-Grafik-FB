@@ -37,8 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.0 – bezpieczne pobieranie, generowanie w pamięci "
-    "i nowoczesny cover FB"
+    "5.2 – większe logo i nowoczesny cover Facebook"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -66,7 +65,10 @@ NAGLOWKI_HTTP = {
     "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.7",
 }
 
-KATALOG_FONTOW = os.path.join("assets", "fonts")
+KATALOG_FONTOW = os.path.join(
+    "assets",
+    "fonts",
+)
 
 SCIEZKA_FONT_BOLD = os.path.join(
     KATALOG_FONTOW,
@@ -91,18 +93,23 @@ FONTY_DO_POBRANIA = {
 
 
 # ============================================================
-# NARZĘDZIA POMOCNICZE
+# PODSTAWOWE NARZĘDZIA
 # ============================================================
 
 def ogranicz(wartosc, minimum, maksimum):
-    return max(minimum, min(maksimum, wartosc))
+    return max(
+        minimum,
+        min(maksimum, wartosc),
+    )
 
 
 def hex_na_rgb(kolor_hex):
     kolor_hex = kolor_hex.strip().lstrip("#")
 
     if len(kolor_hex) != 6:
-        raise ValueError("Kolor musi mieć format #RRGGBB.")
+        raise ValueError(
+            "Kolor musi mieć format #RRGGBB."
+        )
 
     return tuple(
         int(kolor_hex[i:i + 2], 16)
@@ -111,44 +118,34 @@ def hex_na_rgb(kolor_hex):
 
 
 def rgb_na_hex(rgb):
-    return "#{:02x}{:02x}{:02x}".format(*rgb)
+    return "#{:02x}{:02x}{:02x}".format(
+        *rgb
+    )
 
 
 def mieszaj_kolory(kolor_a, kolor_b, udzial_b):
-    udzial_b = ogranicz(udzial_b, 0.0, 1.0)
+    udzial_b = ogranicz(
+        udzial_b,
+        0.0,
+        1.0,
+    )
+
     udzial_a = 1.0 - udzial_b
 
     return tuple(
-        int(kolor_a[i] * udzial_a + kolor_b[i] * udzial_b)
+        int(
+            kolor_a[i] * udzial_a
+            + kolor_b[i] * udzial_b
+        )
         for i in range(3)
     )
 
 
-def luminancja_koloru(rgb):
-    def kanal(c):
-        c = c / 255.0
-        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-    r, g, b = [kanal(v) for v in rgb]
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def kolor_tekstu_dla_tla(rgb):
-    if luminancja_koloru(rgb) > 0.42:
-        return (26, 26, 30, 255)
-
-    return (255, 255, 255, 255)
-
-
-def kolor_drugoplanowy(kolor_glowny):
-    if kolor_glowny[:3] == (255, 255, 255):
-        return (55, 55, 62, 255)
-
-    return (225, 225, 230, 255)
-
-
 def pobierz_czcionke(sciezka, rozmiar):
-    return ImageFont.truetype(sciezka, rozmiar)
+    return ImageFont.truetype(
+        sciezka,
+        rozmiar,
+    )
 
 
 def szerokosc_tekstu(font, tekst):
@@ -157,11 +154,6 @@ def szerokosc_tekstu(font, tekst):
 
     bbox = font.getbbox(tekst)
     return bbox[2] - bbox[0]
-
-
-def wysokosc_tekstu(font, tekst="Ag"):
-    bbox = font.getbbox(tekst)
-    return bbox[3] - bbox[1]
 
 
 def obraz_do_jpeg_bytes(obraz, jakosc=95):
@@ -187,7 +179,9 @@ def wczytaj_obraz(zrodlo):
         obraz = zrodlo.copy()
 
     elif isinstance(zrodlo, (bytes, bytearray)):
-        obraz = Image.open(BytesIO(zrodlo))
+        obraz = Image.open(
+            BytesIO(zrodlo)
+        )
 
     elif hasattr(zrodlo, "read"):
         dane = zrodlo.read()
@@ -197,18 +191,26 @@ def wczytaj_obraz(zrodlo):
         except Exception:
             pass
 
-        obraz = Image.open(BytesIO(dane))
+        obraz = Image.open(
+            BytesIO(dane)
+        )
 
     elif isinstance(zrodlo, str):
         obraz = Image.open(zrodlo)
 
     else:
-        raise TypeError("Nieobsługiwany typ źródła obrazu.")
+        raise TypeError(
+            "Nieobsługiwany typ źródła obrazu."
+        )
 
     obraz.load()
     obraz = ImageOps.exif_transpose(obraz)
 
-    if obraz.width * obraz.height > MAKS_LICZBA_PIKSELI:
+    liczba_pikseli = (
+        obraz.width * obraz.height
+    )
+
+    if liczba_pikseli > MAKS_LICZBA_PIKSELI:
         raise ValueError(
             "Obraz ma zbyt dużą rozdzielczość. "
             f"Maksymalnie {MAKS_LICZBA_PIKSELI:,} pikseli."
@@ -220,12 +222,23 @@ def wczytaj_obraz(zrodlo):
 def kadruj_cover(obraz, szerokosc, wysokosc):
     obraz = obraz.convert("RGBA")
 
-    proporcja_docelowa = szerokosc / wysokosc
-    proporcja_obrazu = obraz.width / obraz.height
+    proporcja_docelowa = (
+        szerokosc / wysokosc
+    )
+
+    proporcja_obrazu = (
+        obraz.width / obraz.height
+    )
 
     if proporcja_obrazu > proporcja_docelowa:
-        nowa_szerokosc = int(obraz.height * proporcja_docelowa)
-        lewy = (obraz.width - nowa_szerokosc) // 2
+        nowa_szerokosc = int(
+            obraz.height * proporcja_docelowa
+        )
+
+        lewy = (
+            obraz.width - nowa_szerokosc
+        ) // 2
+
         obraz = obraz.crop(
             (
                 lewy,
@@ -234,9 +247,16 @@ def kadruj_cover(obraz, szerokosc, wysokosc):
                 obraz.height,
             )
         )
+
     else:
-        nowa_wysokosc = int(obraz.width / proporcja_docelowa)
-        gora = (obraz.height - nowa_wysokosc) // 2
+        nowa_wysokosc = int(
+            obraz.width / proporcja_docelowa
+        )
+
+        gora = (
+            obraz.height - nowa_wysokosc
+        ) // 2
+
         obraz = obraz.crop(
             (
                 0,
@@ -252,27 +272,24 @@ def kadruj_cover(obraz, szerokosc, wysokosc):
     )
 
 
-def dopasuj_contain(obraz, szerokosc, wysokosc):
-    obraz = obraz.copy()
-    obraz.thumbnail(
-        (szerokosc, wysokosc),
-        Image.Resampling.LANCZOS,
-    )
-    return obraz
-
-
 # ============================================================
 # FONTY
 # ============================================================
 
 @st.cache_resource(show_spinner=False)
 def przygotuj_czcionki():
-    os.makedirs(KATALOG_FONTOW, exist_ok=True)
+    os.makedirs(
+        KATALOG_FONTOW,
+        exist_ok=True,
+    )
 
     bledy = []
 
     for sciezka, url in FONTY_DO_POBRANIA.items():
-        if os.path.exists(sciezka) and os.path.getsize(sciezka) > 10_000:
+        if (
+            os.path.exists(sciezka)
+            and os.path.getsize(sciezka) > 10_000
+        ):
             continue
 
         try:
@@ -280,28 +297,38 @@ def przygotuj_czcionki():
                 url,
                 timeout=(5, 30),
             )
+
             odpowiedz.raise_for_status()
 
             if len(odpowiedz.content) < 10_000:
-                raise ValueError("Pobrany plik fontu jest zbyt mały.")
+                raise ValueError(
+                    "Pobrany plik fontu jest zbyt mały."
+                )
 
             with open(sciezka, "wb") as plik:
-                plik.write(odpowiedz.content)
+                plik.write(
+                    odpowiedz.content
+                )
 
         except Exception as blad:
-            bledy.append(f"{os.path.basename(sciezka)}: {blad}")
+            bledy.append(
+                f"{os.path.basename(sciezka)}: {blad}"
+            )
 
     brakujace = [
         sciezka
         for sciezka in FONTY_DO_POBRANIA
-        if not os.path.exists(sciezka)
+        if (
+            not os.path.exists(sciezka)
+            or os.path.getsize(sciezka) < 10_000
+        )
     ]
 
     if brakujace:
         szczegoly = "; ".join(bledy)
+
         raise RuntimeError(
             "Nie udało się przygotować fontów Montserrat. "
-            "Dodaj je ręcznie do katalogu assets/fonts. "
             f"Szczegóły: {szczegoly}"
         )
 
@@ -309,43 +336,64 @@ def przygotuj_czcionki():
 
 
 # ============================================================
-# BEZPIECZNE POBIERANIE URL
+# BEZPIECZNE POBIERANIE STRON
 # ============================================================
 
 def sprawdz_publiczny_url(url):
     try:
         parsed = urlparse(url)
     except Exception as blad:
-        raise ValueError(f"Nieprawidłowy adres URL: {blad}")
+        raise ValueError(
+            f"Nieprawidłowy adres URL: {blad}"
+        )
 
     if parsed.scheme not in ("http", "https"):
-        raise ValueError("Dozwolone są wyłącznie adresy HTTP i HTTPS.")
+        raise ValueError(
+            "Dozwolone są wyłącznie adresy HTTP i HTTPS."
+        )
 
     if not parsed.hostname:
-        raise ValueError("Adres URL nie zawiera prawidłowej domeny.")
+        raise ValueError(
+            "Adres URL nie zawiera prawidłowej domeny."
+        )
 
     if parsed.username or parsed.password:
-        raise ValueError("Adres URL nie może zawierać loginu ani hasła.")
+        raise ValueError(
+            "Adres URL nie może zawierać loginu ani hasła."
+        )
 
     try:
         port = parsed.port
     except ValueError:
-        raise ValueError("Adres URL zawiera nieprawidłowy port.")
+        raise ValueError(
+            "Adres URL zawiera nieprawidłowy port."
+        )
 
     if port not in (None, 80, 443):
-        raise ValueError("Dozwolone są wyłącznie porty 80 i 443.")
+        raise ValueError(
+            "Dozwolone są wyłącznie porty 80 i 443."
+        )
 
     try:
         rekordy = socket.getaddrinfo(
             parsed.hostname,
-            port or (443 if parsed.scheme == "https" else 80),
+            port or (
+                443
+                if parsed.scheme == "https"
+                else 80
+            ),
             type=socket.SOCK_STREAM,
         )
+
     except socket.gaierror:
-        raise ValueError("Nie udało się odnaleźć domeny.")
+        raise ValueError(
+            "Nie udało się odnaleźć domeny."
+        )
 
     if not rekordy:
-        raise ValueError("Domena nie zwróciła żadnego adresu IP.")
+        raise ValueError(
+            "Domena nie zwróciła żadnego adresu IP."
+        )
 
     for rekord in rekordy:
         adres_ip = rekord[4][0].split("%")[0]
@@ -353,7 +401,8 @@ def sprawdz_publiczny_url(url):
 
         if not ip.is_global:
             raise ValueError(
-                "Adres prowadzi do sieci lokalnej lub zastrzeżonej."
+                "Adres prowadzi do sieci lokalnej "
+                "lub zastrzeżonej."
             )
 
     return True
@@ -368,7 +417,9 @@ def bezpieczne_pobranie(
     aktualny_url = url
 
     for _ in range(maks_przekierowan + 1):
-        sprawdz_publiczny_url(aktualny_url)
+        sprawdz_publiczny_url(
+            aktualny_url
+        )
 
         odpowiedz = requests.get(
             aktualny_url,
@@ -378,15 +429,28 @@ def bezpieczne_pobranie(
             allow_redirects=False,
         )
 
-        if odpowiedz.status_code in (301, 302, 303, 307, 308):
-            lokalizacja = odpowiedz.headers.get("Location")
+        if odpowiedz.status_code in (
+            301,
+            302,
+            303,
+            307,
+            308,
+        ):
+            lokalizacja = odpowiedz.headers.get(
+                "Location"
+            )
 
             if not lokalizacja:
                 raise ValueError(
-                    "Serwer zwrócił przekierowanie bez adresu docelowego."
+                    "Serwer zwrócił przekierowanie "
+                    "bez adresu docelowego."
                 )
 
-            aktualny_url = urljoin(aktualny_url, lokalizacja)
+            aktualny_url = urljoin(
+                aktualny_url,
+                lokalizacja,
+            )
+
             continue
 
         odpowiedz.raise_for_status()
@@ -410,42 +474,63 @@ def bezpieczne_pobranie(
 
             if content_type not in dozwolone:
                 raise ValueError(
-                    f"Adres nie zwrócił strony HTML: {content_type}"
+                    "Adres nie zwrócił strony HTML. "
+                    f"Typ: {content_type}"
                 )
 
         if oczekiwany_typ == "image":
-            if content_type and not content_type.startswith("image/"):
+            if (
+                content_type
+                and not content_type.startswith("image/")
+            ):
                 raise ValueError(
-                    f"Adres nie zwrócił obrazu: {content_type}"
+                    "Adres nie zwrócił obrazu. "
+                    f"Typ: {content_type}"
                 )
 
-        dlugosc = odpowiedz.headers.get("Content-Length")
+        dlugosc = odpowiedz.headers.get(
+            "Content-Length"
+        )
 
         if dlugosc:
             try:
-                if int(dlugosc) > maks_rozmiar:
-                    raise ValueError("Pobierany plik jest zbyt duży.")
-            except ValueError as blad:
-                if str(blad) == "Pobierany plik jest zbyt duży.":
-                    raise
+                rozmiar = int(dlugosc)
+
+                if rozmiar > maks_rozmiar:
+                    raise ValueError(
+                        "Pobierany plik jest zbyt duży."
+                    )
+
+            except TypeError:
+                pass
 
         fragmenty = []
         pobrano = 0
 
-        for fragment in odpowiedz.iter_content(chunk_size=64 * 1024):
+        for fragment in odpowiedz.iter_content(
+            chunk_size=64 * 1024
+        ):
             if not fragment:
                 continue
 
             pobrano += len(fragment)
 
             if pobrano > maks_rozmiar:
-                raise ValueError("Pobierany plik przekroczył limit rozmiaru.")
+                raise ValueError(
+                    "Pobierany plik przekroczył limit rozmiaru."
+                )
 
             fragmenty.append(fragment)
 
-        return b"".join(fragmenty), aktualny_url, content_type
+        return (
+            b"".join(fragmenty),
+            aktualny_url,
+            content_type,
+        )
 
-    raise ValueError("Adres zawiera zbyt wiele przekierowań.")
+    raise ValueError(
+        "Adres zawiera zbyt wiele przekierowań."
+    )
 
 
 # ============================================================
@@ -476,31 +561,48 @@ def wyczysc_tytul_portalu(tytul_surowy):
     tytul_czysty = tytul_surowy.strip()
 
     for smiec in smieci:
-        if tytul_czysty.lower().endswith(smiec.lower()):
-            tytul_czysty = tytul_czysty[:-len(smiec)].strip()
+        if tytul_czysty.lower().endswith(
+            smiec.lower()
+        ):
+            tytul_czysty = tytul_czysty[
+                :-len(smiec)
+            ].strip()
 
-    return tytul_czysty.strip("- – |").strip()
+    return tytul_czysty.strip(
+        "- – |"
+    ).strip()
 
 
 def znajdz_adres_zdjecia(soup, url_artykulu):
     kandydaci = []
+    preferowane = []
 
-    og_image = soup.find("meta", property="og:image")
+    og_image = soup.find(
+        "meta",
+        property="og:image",
+    )
 
     if og_image and og_image.get("content"):
-        kandydaci.append(og_image.get("content"))
+        kandydaci.append(
+            og_image.get("content")
+        )
 
     twitter_image = soup.find(
         "meta",
         attrs={"name": "twitter:image"},
     )
 
-    if twitter_image and twitter_image.get("content"):
-        kandydaci.append(twitter_image.get("content"))
+    if (
+        twitter_image
+        and twitter_image.get("content")
+    ):
+        kandydaci.append(
+            twitter_image.get("content")
+        )
 
-    znalezione_1050 = []
-
-    for tag in soup.find_all(["source", "img"]):
+    for tag in soup.find_all(
+        ["source", "img"]
+    ):
         srcset = tag.get("srcset")
 
         if srcset:
@@ -510,29 +612,44 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
                 if elementy:
                     adres = elementy[0]
 
-                    if "/i/" in adres and "1050x0" in adres:
-                        znalezione_1050.append(adres)
+                    if (
+                        "/i/" in adres
+                        and "1050x0" in adres
+                    ):
+                        preferowane.append(adres)
                     else:
                         kandydaci.append(adres)
 
-        for atrybut in ("src", "data-src", "data-lazy-src"):
+        for atrybut in (
+            "src",
+            "data-src",
+            "data-lazy-src",
+        ):
             adres = tag.get(atrybut)
 
-            if adres:
-                if "/i/" in adres and "1050x0" in adres:
-                    znalezione_1050.append(adres)
-                else:
-                    kandydaci.append(adres)
+            if not adres:
+                continue
 
-    wszystkie = znalezione_1050 + kandydaci
+            if (
+                "/i/" in adres
+                and "1050x0" in adres
+            ):
+                preferowane.append(adres)
+            else:
+                kandydaci.append(adres)
 
-    for adres in wszystkie:
+    for adres in preferowane + kandydaci:
         if not adres:
             continue
 
-        pelny_adres = urljoin(url_artykulu, adres.strip())
+        pelny_adres = urljoin(
+            url_artykulu,
+            adres.strip(),
+        )
 
-        if pelny_adres.startswith(("http://", "https://")):
+        if pelny_adres.startswith(
+            ("http://", "https://")
+        ):
             return pelny_adres
 
     return None
@@ -545,20 +662,34 @@ def pobierz_dane_z_artykulu(url):
         oczekiwany_typ="html",
     )
 
-    html = html_bytes.decode("utf-8", errors="replace")
-    soup = BeautifulSoup(html, "html.parser")
+    html = html_bytes.decode(
+        "utf-8",
+        errors="replace",
+    )
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
 
     tytul = "BRAK TYTUŁU"
 
-    og_title = soup.find("meta", property="og:title")
+    og_title = soup.find(
+        "meta",
+        property="og:title",
+    )
 
     if og_title and og_title.get("content"):
         tytul = wyczysc_tytul_portalu(
             og_title.get("content")
         )
+
     elif soup.title:
         tytul = wyczysc_tytul_portalu(
-            soup.title.get_text(" ", strip=True)
+            soup.title.get_text(
+                " ",
+                strip=True,
+            )
         )
 
     adres_zdjecia = znajdz_adres_zdjecia(
@@ -568,7 +699,8 @@ def pobierz_dane_z_artykulu(url):
 
     if not adres_zdjecia:
         raise ValueError(
-            "Nie udało się odnaleźć głównego zdjęcia artykułu."
+            "Nie udało się odnaleźć głównego "
+            "zdjęcia artykułu."
         )
 
     obraz_bytes, _, _ = bezpieczne_pobranie(
@@ -577,21 +709,27 @@ def pobierz_dane_z_artykulu(url):
         oczekiwany_typ="image",
     )
 
-    obraz = wczytaj_obraz(obraz_bytes)
+    obraz = wczytaj_obraz(
+        obraz_bytes
+    )
 
     if obraz.width < 300 or obraz.height < 200:
         raise ValueError(
-            "Pobrane zdjęcie jest zbyt małe do przygotowania grafiki."
+            "Pobrane zdjęcie jest zbyt małe."
         )
 
     return tytul, obraz_bytes
 
 
 # ============================================================
-# ZAWIJANIE I DOPASOWANIE TEKSTU
+# ZAWIJANIE TEKSTU
 # ============================================================
 
-def podziel_dlugie_slowo(slowo, font, maks_szerokosc):
+def podziel_dlugie_slowo(
+    slowo,
+    font,
+    maks_szerokosc,
+):
     fragmenty = []
     aktualny = ""
 
@@ -599,21 +737,32 @@ def podziel_dlugie_slowo(slowo, font, maks_szerokosc):
         test = aktualny + znak
 
         if (
-            szerokosc_tekstu(font, test) <= maks_szerokosc
+            szerokosc_tekstu(font, test)
+            <= maks_szerokosc
             or not aktualny
         ):
             aktualny = test
+
         else:
-            fragmenty.append(aktualny)
+            fragmenty.append(
+                aktualny
+            )
+
             aktualny = znak
 
     if aktualny:
-        fragmenty.append(aktualny)
+        fragmenty.append(
+            aktualny
+        )
 
     return fragmenty
 
 
-def zawin_tekst(tekst, font, maks_szerokosc):
+def zawin_tekst(
+    tekst,
+    font,
+    maks_szerokosc,
+):
     linie_ostateczne = []
 
     for akapit in tekst.splitlines() or [""]:
@@ -626,11 +775,15 @@ def zawin_tekst(tekst, font, maks_szerokosc):
         aktualna_linia = []
 
         for slowo in slowa:
-            if szerokosc_tekstu(font, slowo) > maks_szerokosc:
+            if (
+                szerokosc_tekstu(font, slowo)
+                > maks_szerokosc
+            ):
                 if aktualna_linia:
                     linie_ostateczne.append(
                         " ".join(aktualna_linia)
                     )
+
                     aktualna_linia = []
 
                 fragmenty = podziel_dlugie_slowo(
@@ -639,17 +792,29 @@ def zawin_tekst(tekst, font, maks_szerokosc):
                     maks_szerokosc,
                 )
 
-                linie_ostateczne.extend(fragmenty[:-1])
+                linie_ostateczne.extend(
+                    fragmenty[:-1]
+                )
 
                 if fragmenty:
-                    aktualna_linia = [fragmenty[-1]]
+                    aktualna_linia = [
+                        fragmenty[-1]
+                    ]
 
                 continue
 
-            test = " ".join(aktualna_linia + [slowo])
+            test = " ".join(
+                aktualna_linia + [slowo]
+            )
 
-            if szerokosc_tekstu(font, test) <= maks_szerokosc:
-                aktualna_linia.append(slowo)
+            if (
+                szerokosc_tekstu(font, test)
+                <= maks_szerokosc
+            ):
+                aktualna_linia.append(
+                    slowo
+                )
+
             else:
                 if aktualna_linia:
                     linie_ostateczne.append(
@@ -676,22 +841,42 @@ def dopasuj_tekst(
     odstep_linii=10,
     maks_linii=None,
 ):
-    for rozmiar in range(maks_rozmiar, min_rozmiar - 1, -1):
-        font = pobierz_czcionke(sciezka_fontu, rozmiar)
+    for rozmiar in range(
+        maks_rozmiar,
+        min_rozmiar - 1,
+        -1,
+    ):
+        font = pobierz_czcionke(
+            sciezka_fontu,
+            rozmiar,
+        )
+
         linie = zawin_tekst(
             tekst,
             font,
             maks_szerokosc,
         )
 
-        wysokosc_linii = rozmiar + odstep_linii
-        wysokosc_bloku = len(linie) * wysokosc_linii
+        wysokosc_linii = (
+            rozmiar + odstep_linii
+        )
 
-        if maks_linii and len(linie) > maks_linii:
+        wysokosc_bloku = (
+            len(linie) * wysokosc_linii
+        )
+
+        if (
+            maks_linii
+            and len(linie) > maks_linii
+        ):
             continue
 
         if wysokosc_bloku <= maks_wysokosc:
-            return font, linie, wysokosc_linii
+            return (
+                font,
+                linie,
+                wysokosc_linii,
+            )
 
     font = pobierz_czcionke(
         sciezka_fontu,
@@ -719,9 +904,15 @@ def dopasuj_tekst(
             ):
                 ostatnia = ostatnia[:-1]
 
-            linie[-1] = ostatnia.rstrip() + "…"
+            linie[-1] = (
+                ostatnia.rstrip() + "…"
+            )
 
-    return font, linie, min_rozmiar + odstep_linii
+    return (
+        font,
+        linie,
+        min_rozmiar + odstep_linii,
+    )
 
 
 def rysuj_tekst(
@@ -730,7 +921,6 @@ def rysuj_tekst(
     tekst,
     font,
     fill,
-    anchor=None,
 ):
     if PILMOJI_DOSTEPNE:
         try:
@@ -740,19 +930,20 @@ def rysuj_tekst(
                     tekst,
                     font=font,
                     fill=fill,
-                    anchor=anchor,
                 )
+
             return
+
         except Exception:
             pass
 
     draw = ImageDraw.Draw(obraz)
+
     draw.text(
         pozycja,
         tekst,
         font=font,
         fill=fill,
-        anchor=anchor,
     )
 
 
@@ -761,8 +952,14 @@ def rysuj_tekst(
 # ============================================================
 
 def analiza_barwna(zrodlo_obrazu):
-    obraz = wczytaj_obraz(zrodlo_obrazu).convert("RGB")
-    obraz.thumbnail((160, 160), Image.Resampling.LANCZOS)
+    obraz = wczytaj_obraz(
+        zrodlo_obrazu
+    ).convert("RGB")
+
+    obraz.thumbnail(
+        (160, 160),
+        Image.Resampling.LANCZOS,
+    )
 
     paleta = obraz.quantize(
         colors=16,
@@ -774,7 +971,8 @@ def analiza_barwna(zrodlo_obrazu):
     ) or []
 
     laczna_liczba = sum(
-        licznik for licznik, _ in kolory
+        licznik
+        for licznik, _ in kolory
     ) or 1
 
     x = 0.0
@@ -783,7 +981,9 @@ def analiza_barwna(zrodlo_obrazu):
     suma_nasycenia = 0.0
 
     for licznik, (r, g, b) in kolory:
-        udzial = licznik / laczna_liczba
+        udzial = (
+            licznik / laczna_liczba
+        )
 
         h, s, v = colorsys.rgb_to_hsv(
             r / 255,
@@ -794,28 +994,50 @@ def analiza_barwna(zrodlo_obrazu):
         if v < 0.08 or v > 0.98:
             continue
 
-        suma_nasycenia += udzial * s
+        suma_nasycenia += (
+            udzial * s
+        )
 
         if s >= 0.10:
-            waga = udzial * max(s, 0.15)
-            kat = 2 * math.pi * h
+            waga = (
+                udzial * max(s, 0.15)
+            )
 
-            x += waga * math.cos(kat)
-            y += waga * math.sin(kat)
+            kat = (
+                2 * math.pi * h
+            )
+
+            x += (
+                waga * math.cos(kat)
+            )
+
+            y += (
+                waga * math.sin(kat)
+            )
+
             waga_odcienia += waga
 
     if waga_odcienia == 0:
         odcien = 0.0
+
     else:
         odcien = (
-            math.atan2(y, x) / (2 * math.pi)
+            math.atan2(y, x)
+            / (2 * math.pi)
         ) % 1.0
 
     return odcien, suma_nasycenia
 
 
-def na_ciemny_podklad(odcien, nasycenie):
-    jasnosc = 0.30 if nasycenie >= 0.15 else 0.23
+def na_ciemny_podklad(
+    odcien,
+    nasycenie,
+):
+    jasnosc = (
+        0.30
+        if nasycenie >= 0.15
+        else 0.23
+    )
 
     r, g, b = colorsys.hsv_to_rgb(
         odcien,
@@ -843,9 +1065,15 @@ def znormalizuj_kolor_podkladu(rgb):
     )
 
 
-def kolor_podkladu_ze_zdjecia(zrodlo_obrazu, maks_nasycenie=0.65):
+def kolor_podkladu_ze_zdjecia(
+    zrodlo_obrazu,
+    maks_nasycenie=0.65,
+):
     try:
-        odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
+        odcien, nasycenie = analiza_barwna(
+            zrodlo_obrazu
+        )
+
         nasycenie = min(
             nasycenie * 2.5,
             maks_nasycenie,
@@ -856,17 +1084,17 @@ def kolor_podkladu_ze_zdjecia(zrodlo_obrazu, maks_nasycenie=0.65):
             nasycenie,
         )
 
-    except Exception as blad:
-        print(
-            "⚠️ Nie udało się wyliczyć koloru dominującego:",
-            blad,
-        )
+    except Exception:
         return (28, 30, 34)
 
 
-def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
+def kolor_pastelowy_ze_zdjecia(
+    zrodlo_obrazu,
+):
     try:
-        odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
+        odcien, nasycenie = analiza_barwna(
+            zrodlo_obrazu
+        )
 
         nasycenie_docelowe = ogranicz(
             0.12 + nasycenie * 0.20,
@@ -890,8 +1118,108 @@ def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
         return (229, 209, 212)
 
 
+def kolor_akcentowy_ze_zdjecia(
+    zrodlo_obrazu,
+):
+    try:
+        obraz = wczytaj_obraz(
+            zrodlo_obrazu
+        ).convert("RGB")
+
+        obraz.thumbnail(
+            (150, 150),
+            Image.Resampling.LANCZOS,
+        )
+
+        paleta = obraz.quantize(
+            colors=20,
+            method=Image.Quantize.FASTOCTREE,
+        ).convert("RGB")
+
+        kolory = paleta.getcolors(
+            paleta.width * paleta.height
+        ) or []
+
+        laczna_liczba = sum(
+            licznik
+            for licznik, _ in kolory
+        ) or 1
+
+        najlepszy_kolor = None
+        najlepszy_wynik = -1
+
+        for licznik, rgb in kolory:
+            r, g, b = rgb
+
+            h, s, v = colorsys.rgb_to_hsv(
+                r / 255,
+                g / 255,
+                b / 255,
+            )
+
+            if (
+                s < 0.20
+                or v < 0.22
+                or v > 0.94
+            ):
+                continue
+
+            udzial = (
+                licznik / laczna_liczba
+            )
+
+            wynik = (
+                (0.25 + udzial)
+                * (s ** 1.7)
+                * (
+                    1.0
+                    - abs(v - 0.65) * 0.55
+                )
+            )
+
+            if wynik > najlepszy_wynik:
+                najlepszy_wynik = wynik
+                najlepszy_kolor = (
+                    h,
+                    s,
+                    v,
+                )
+
+        if najlepszy_kolor is None:
+            return (177, 55, 121)
+
+        h, s, v = najlepszy_kolor
+
+        s = ogranicz(
+            s * 1.08,
+            0.48,
+            0.82,
+        )
+
+        v = ogranicz(
+            v,
+            0.48,
+            0.76,
+        )
+
+        r, g, b = colorsys.hsv_to_rgb(
+            h,
+            s,
+            v,
+        )
+
+        return (
+            int(r * 255),
+            int(g * 255),
+            int(b * 255),
+        )
+
+    except Exception:
+        return (177, 55, 121)
+
+
 # ============================================================
-# GENERATOR POSTA: MAGAZYN
+# GENERATOR POSTA – MAGAZYN
 # ============================================================
 
 def generuj_grafike_magazyn(
@@ -905,7 +1233,9 @@ def generuj_grafike_magazyn(
     szerokosc = SZEROKOSC_POSTA
     wysokosc = WYSOKOSC_POSTA
 
-    kolor_bazowy = kolor_podkladu or (0, 0, 0)
+    kolor_bazowy = (
+        kolor_podkladu or (0, 0, 0)
+    )
 
     canvas = Image.new(
         "RGBA",
@@ -914,7 +1244,10 @@ def generuj_grafike_magazyn(
     )
 
     if zrodlo_zdjecia:
-        obraz = wczytaj_obraz(zrodlo_zdjecia)
+        obraz = wczytaj_obraz(
+            zrodlo_zdjecia
+        )
+
         obraz = kadruj_cover(
             obraz,
             szerokosc,
@@ -925,7 +1258,9 @@ def generuj_grafike_magazyn(
             obraz
         ).enhance(1.15)
 
-        canvas.alpha_composite(obraz)
+        canvas.alpha_composite(
+            obraz
+        )
 
     gradient = Image.new(
         "RGBA",
@@ -933,17 +1268,34 @@ def generuj_grafike_magazyn(
         (0, 0, 0, 0),
     )
 
-    draw_gradient = ImageDraw.Draw(gradient)
-    start_gradientu = int(wysokosc * 0.22)
-    maks_alpha = 246 if is_audio else 235
+    draw_gradient = ImageDraw.Draw(
+        gradient
+    )
 
-    for y in range(start_gradientu, wysokosc):
+    start_gradientu = int(
+        wysokosc * 0.22
+    )
+
+    maks_alpha = (
+        246 if is_audio else 235
+    )
+
+    for y in range(
+        start_gradientu,
+        wysokosc,
+    ):
         postep = (
             (y - start_gradientu)
-            / (wysokosc - start_gradientu)
+            / (
+                wysokosc
+                - start_gradientu
+            )
         )
 
-        alpha = int(maks_alpha * (postep ** 1.15))
+        alpha = int(
+            maks_alpha
+            * (postep ** 1.15)
+        )
 
         draw_gradient.line(
             [(0, y), (szerokosc, y)],
@@ -955,8 +1307,14 @@ def generuj_grafike_magazyn(
         gradient,
     )
 
-    if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = wczytaj_obraz(sciezka_logo)
+    if (
+        sciezka_logo
+        and os.path.exists(sciezka_logo)
+    ):
+        logo = wczytaj_obraz(
+            sciezka_logo
+        )
+
         logo.thumbnail(
             (260, 180),
             Image.Resampling.LANCZOS,
@@ -970,11 +1328,25 @@ def generuj_grafike_magazyn(
             ),
         )
 
-    tekst_duzy, separator, tekst_maly = tekst_glowny.partition("|")
-    tekst_duzy = tekst_duzy.strip().upper()
-    tekst_maly = tekst_maly.strip().upper() if separator else ""
+    tekst_duzy, separator, tekst_maly = (
+        tekst_glowny.partition("|")
+    )
 
-    font_duzy, linie_duze, wysokosc_linii = dopasuj_tekst(
+    tekst_duzy = (
+        tekst_duzy.strip().upper()
+    )
+
+    tekst_maly = (
+        tekst_maly.strip().upper()
+        if separator
+        else ""
+    )
+
+    (
+        font_duzy,
+        linie_duze,
+        wysokosc_linii,
+    ) = dopasuj_tekst(
         tekst=tekst_duzy,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
         maks_rozmiar=58,
@@ -990,7 +1362,11 @@ def generuj_grafike_magazyn(
     wysokosc_linii_male = 0
 
     if tekst_maly:
-        font_maly, linie_male, wysokosc_linii_male = dopasuj_tekst(
+        (
+            font_maly,
+            linie_male,
+            wysokosc_linii_male,
+        ) = dopasuj_tekst(
             tekst=tekst_maly,
             sciezka_fontu=SCIEZKA_FONT_SEMIBOLD,
             maks_rozmiar=38,
@@ -1002,13 +1378,15 @@ def generuj_grafike_magazyn(
         )
 
     calkowita_wysokosc = (
-        len(linie_duze) * wysokosc_linii
+        len(linie_duze)
+        * wysokosc_linii
     )
 
     if linie_male:
         calkowita_wysokosc += (
             22
-            + len(linie_male) * wysokosc_linii_male
+            + len(linie_male)
+            * wysokosc_linii_male
         )
 
     y = int(
@@ -1016,7 +1394,12 @@ def generuj_grafike_magazyn(
         - calkowita_wysokosc / 2
     )
 
-    kolor_bialy = (255, 255, 255, 255)
+    kolor_bialy = (
+        255,
+        255,
+        255,
+        255,
+    )
 
     for linia in linie_duze:
         szer_linii = szerokosc_tekstu(
@@ -1085,11 +1468,13 @@ def generuj_grafike_magazyn(
             kolor_bialy,
         )
 
-    return obraz_do_jpeg_bytes(canvas)
+    return obraz_do_jpeg_bytes(
+        canvas
+    )
 
 
 # ============================================================
-# GENERATOR POSTA: SPLIT SCREEN
+# GENERATOR POSTA – SPLIT SCREEN
 # ============================================================
 
 def generuj_grafike_split(
@@ -1102,10 +1487,15 @@ def generuj_grafike_split(
 ):
     szerokosc = SZEROKOSC_POSTA
     wysokosc = WYSOKOSC_POSTA
-    wysokosc_zdjecia = int(szerokosc * 9 / 16)
+
+    wysokosc_zdjecia = int(
+        szerokosc * 9 / 16
+    )
 
     kolor_tla = kolor_podkladu or (
-        (18, 18, 20) if is_audio else (25, 30, 35)
+        (18, 18, 20)
+        if is_audio
+        else (25, 30, 35)
     )
 
     canvas = Image.new(
@@ -1115,22 +1505,34 @@ def generuj_grafike_split(
     )
 
     if zrodlo_zdjecia:
-        obraz = wczytaj_obraz(zrodlo_zdjecia)
+        obraz = wczytaj_obraz(
+            zrodlo_zdjecia
+        )
 
         if is_audio:
             obraz.thumbnail(
-                (szerokosc, wysokosc_zdjecia),
+                (
+                    szerokosc,
+                    wysokosc_zdjecia,
+                ),
                 Image.Resampling.LANCZOS,
             )
 
-            probka = obraz.convert("RGB").resize(
-                (1, 1),
-                Image.Resampling.LANCZOS,
-            ).getpixel((0, 0))
+            probka = (
+                obraz.convert("RGB")
+                .resize(
+                    (1, 1),
+                    Image.Resampling.LANCZOS,
+                )
+                .getpixel((0, 0))
+            )
 
             tlo = Image.new(
                 "RGBA",
-                (szerokosc, wysokosc_zdjecia),
+                (
+                    szerokosc,
+                    wysokosc_zdjecia,
+                ),
                 probka + (255,),
             )
 
@@ -1139,7 +1541,8 @@ def generuj_grafike_split(
             ) // 2
 
             offset_y = (
-                wysokosc_zdjecia - obraz.height
+                wysokosc_zdjecia
+                - obraz.height
             ) // 2
 
             tlo.alpha_composite(
@@ -1148,6 +1551,7 @@ def generuj_grafike_split(
             )
 
             obraz = tlo
+
         else:
             obraz = kadruj_cover(
                 obraz,
@@ -1159,7 +1563,9 @@ def generuj_grafike_split(
             obraz
         ).enhance(1.15)
 
-        canvas.alpha_composite(obraz)
+        canvas.alpha_composite(
+            obraz
+        )
 
     draw = ImageDraw.Draw(canvas)
 
@@ -1174,8 +1580,14 @@ def generuj_grafike_split(
             fill=(215, 40, 40, 255),
         )
 
-    if sciezka_logo and os.path.exists(sciezka_logo):
-        logo = wczytaj_obraz(sciezka_logo)
+    if (
+        sciezka_logo
+        and os.path.exists(sciezka_logo)
+    ):
+        logo = wczytaj_obraz(
+            sciezka_logo
+        )
+
         logo.thumbnail(
             (260, 180),
             Image.Resampling.LANCZOS,
@@ -1189,15 +1601,31 @@ def generuj_grafike_split(
             ),
         )
 
-    tekst_duzy, separator, tekst_maly = tekst_glowny.partition("|")
-    tekst_duzy = tekst_duzy.strip().upper()
-    tekst_maly = tekst_maly.strip().upper() if separator else ""
-
-    dostepna_wysokosc = (
-        wysokosc - wysokosc_zdjecia - 95
+    tekst_duzy, separator, tekst_maly = (
+        tekst_glowny.partition("|")
     )
 
-    font_duzy, linie_duze, wysokosc_linii = dopasuj_tekst(
+    tekst_duzy = (
+        tekst_duzy.strip().upper()
+    )
+
+    tekst_maly = (
+        tekst_maly.strip().upper()
+        if separator
+        else ""
+    )
+
+    dostepna_wysokosc = (
+        wysokosc
+        - wysokosc_zdjecia
+        - 95
+    )
+
+    (
+        font_duzy,
+        linie_duze,
+        wysokosc_linii,
+    ) = dopasuj_tekst(
         tekst=tekst_duzy,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
         maks_rozmiar=55,
@@ -1213,7 +1641,11 @@ def generuj_grafike_split(
     wysokosc_linii_male = 0
 
     if tekst_maly:
-        font_maly, linie_male, wysokosc_linii_male = dopasuj_tekst(
+        (
+            font_maly,
+            linie_male,
+            wysokosc_linii_male,
+        ) = dopasuj_tekst(
             tekst=tekst_maly,
             sciezka_fontu=SCIEZKA_FONT_SEMIBOLD,
             maks_rozmiar=34,
@@ -1225,18 +1657,22 @@ def generuj_grafike_split(
         )
 
     calkowita_wysokosc = (
-        len(linie_duze) * wysokosc_linii
+        len(linie_duze)
+        * wysokosc_linii
     )
 
     if linie_male:
         calkowita_wysokosc += (
             16
-            + len(linie_male) * wysokosc_linii_male
+            + len(linie_male)
+            * wysokosc_linii_male
         )
 
     srodek_obszaru = (
         wysokosc_zdjecia
-        + (wysokosc - wysokosc_zdjecia) / 2
+        + (
+            wysokosc - wysokosc_zdjecia
+        ) / 2
         - 12
     )
 
@@ -1245,7 +1681,12 @@ def generuj_grafike_split(
         - calkowita_wysokosc / 2
     )
 
-    kolor_bialy = (255, 255, 255, 255)
+    kolor_bialy = (
+        255,
+        255,
+        255,
+        255,
+    )
 
     for linia in linie_duze:
         szer_linii = szerokosc_tekstu(
@@ -1324,55 +1765,18 @@ def generuj_grafike_split(
             kolor_stopki,
         )
 
-    return obraz_do_jpeg_bytes(canvas)
+    return obraz_do_jpeg_bytes(
+        canvas
+    )
 
 
 # ============================================================
-# NOWOCZESNY COVER FACEBOOK
+# NARZĘDZIA COVERA
 # ============================================================
 
-def utworz_gradient_covera(kolor_tla):
-    lewy_kolor = mieszaj_kolory(
-        kolor_tla,
-        (255, 255, 255),
-        0.22,
-    )
-
-    prawy_kolor = mieszaj_kolory(
-        kolor_tla,
-        (45, 45, 55),
-        0.08,
-    )
-
-    canvas = Image.new(
-        "RGBA",
-        (SZEROKOSC_COVERA, WYSOKOSC_COVERA),
-        lewy_kolor + (255,),
-    )
-
-    draw = ImageDraw.Draw(canvas)
-
-    for x in range(SZEROKOSC_COVERA):
-        postep = x / max(1, SZEROKOSC_COVERA - 1)
-
-        kolor = mieszaj_kolory(
-            lewy_kolor,
-            prawy_kolor,
-            postep,
-        )
-
-        draw.line(
-            [(x, 0), (x, WYSOKOSC_COVERA)],
-            fill=kolor + (255,),
-        )
-
-    return canvas, lewy_kolor
-
-def przytnij_przezroczyste_marginesy(obraz):
-    """
-    Usuwa puste, przezroczyste marginesy z pliku logo.
-    Dzięki temu logo można prawidłowo powiększyć.
-    """
+def przytnij_przezroczyste_marginesy(
+    obraz,
+):
     obraz = obraz.convert("RGBA")
     kanal_alpha = obraz.getchannel("A")
     bbox = kanal_alpha.getbbox()
@@ -1383,12 +1787,17 @@ def przytnij_przezroczyste_marginesy(obraz):
     return obraz
 
 
-def przygotuj_duze_logo(obraz, maks_szerokosc=560, maks_wysokosc=145):
-    """
-    Dopasowuje logo i – w przeciwieństwie do thumbnail() –
-    pozwala również powiększyć mały plik.
-    """
-    obraz = przytnij_przezroczyste_marginesy(obraz)
+def przygotuj_duze_logo(
+    obraz,
+    maks_szerokosc=590,
+    maks_wysokosc=150,
+):
+    obraz = przytnij_przezroczyste_marginesy(
+        obraz
+    )
+
+    if obraz.width <= 0 or obraz.height <= 0:
+        return obraz
 
     skala = min(
         maks_szerokosc / obraz.width,
@@ -1406,103 +1815,18 @@ def przygotuj_duze_logo(obraz, maks_szerokosc=560, maks_wysokosc=145):
     )
 
     return obraz.resize(
-        (nowa_szerokosc, nowa_wysokosc),
+        (
+            nowa_szerokosc,
+            nowa_wysokosc,
+        ),
         Image.Resampling.LANCZOS,
     )
 
 
-def kolor_akcentowy_ze_zdjecia(zrodlo_obrazu):
-    """
-    Szuka wyrazistego koloru na okładce.
-    Preferuje kolory nasycone, ale nie bardzo ciemne ani bardzo jasne.
-    """
-    try:
-        obraz = wczytaj_obraz(
-            zrodlo_obrazu
-        ).convert("RGB")
+# ============================================================
+# NOWOCZESNY COVER FACEBOOK
+# ============================================================
 
-        obraz.thumbnail(
-            (150, 150),
-            Image.Resampling.LANCZOS,
-        )
-
-        paleta = obraz.quantize(
-            colors=20,
-            method=Image.Quantize.FASTOCTREE,
-        ).convert("RGB")
-
-        kolory = paleta.getcolors(
-            paleta.width * paleta.height
-        ) or []
-
-        laczna_liczba = sum(
-            licznik
-            for licznik, _ in kolory
-        ) or 1
-
-        najlepszy_kolor = None
-        najlepszy_wynik = -1
-
-        for licznik, rgb in kolory:
-            r, g, b = rgb
-
-            h, s, v = colorsys.rgb_to_hsv(
-                r / 255,
-                g / 255,
-                b / 255,
-            )
-
-            # Odrzucamy szarości, czerń i niemal białe kolory
-            if s < 0.20 or v < 0.22 or v > 0.94:
-                continue
-
-            udzial = licznik / laczna_liczba
-
-            # Preferujemy kolory nasycone.
-            # Udział powierzchniowy ma mniejsze znaczenie.
-            wynik = (
-                (0.25 + udzial)
-                * (s ** 1.7)
-                * (1.0 - abs(v - 0.65) * 0.55)
-            )
-
-            if wynik > najlepszy_wynik:
-                najlepszy_wynik = wynik
-                najlepszy_kolor = (h, s, v)
-
-        if najlepszy_kolor is None:
-            return (177, 55, 121)
-
-        h, s, v = najlepszy_kolor
-
-        # Uszlachetniamy kolor do zastosowania w projekcie
-        s = ogranicz(
-            s * 1.08,
-            0.48,
-            0.82,
-        )
-
-        v = ogranicz(
-            v,
-            0.48,
-            0.76,
-        )
-
-        r, g, b = colorsys.hsv_to_rgb(
-            h,
-            s,
-            v,
-        )
-
-        return (
-            int(r * 255),
-            int(g * 255),
-            int(b * 255),
-        )
-
-    except Exception:
-        return (177, 55, 121)
-        
 def generuj_cover_fb(
     zrodlo_okladki,
     sciezka_logo,
@@ -1513,20 +1837,33 @@ def generuj_cover_fb(
     szerokosc = SZEROKOSC_COVERA
     wysokosc = WYSOKOSC_COVERA
 
-    # ========================================================
-    # 1. SUBTELNE TŁO
-    # ========================================================
+    # Kolor akcentowy pobrany bezpośrednio z okładki.
+    kolor_akcentowy = kolor_akcentowy_ze_zdjecia(
+        zrodlo_okladki
+    )
 
+    # Jeżeli ręcznie wskazano nasycony kolor,
+    # używamy go jako akcentu.
+    _, nasycenie_reczne, _ = colorsys.rgb_to_hsv(
+        kolor_tla[0] / 255,
+        kolor_tla[1] / 255,
+        kolor_tla[2] / 255,
+    )
+
+    if nasycenie_reczne > 0.32:
+        kolor_akcentowy = kolor_tla
+
+    # Neutralne tło, tylko lekko zabarwione.
     kolor_lewy = mieszaj_kolory(
+        (248, 247, 244),
         kolor_tla,
-        (255, 255, 255),
-        0.25,
+        0.05,
     )
 
     kolor_prawy = mieszaj_kolory(
-        kolor_tla,
-        (235, 235, 235),
-        0.08,
+        (242, 241, 238),
+        kolor_akcentowy,
+        0.05,
     )
 
     canvas = Image.new(
@@ -1537,9 +1874,10 @@ def generuj_cover_fb(
 
     draw = ImageDraw.Draw(canvas)
 
-    # Delikatny gradient
     for x in range(szerokosc):
-        postep = x / max(1, szerokosc - 1)
+        postep = (
+            x / max(1, szerokosc - 1)
+        )
 
         kolor = mieszaj_kolory(
             kolor_lewy,
@@ -1553,118 +1891,148 @@ def generuj_cover_fb(
         )
 
     # ========================================================
-    # 2. KOLORY I DEKORACJE
+    # KOLOROWY PANEL
     # ========================================================
 
-    kolor_tekstu = kolor_tekstu_dla_tla(
-        kolor_lewy
-    )
-
-    czy_jasny_tekst = (
-        kolor_tekstu[:3] == (255, 255, 255)
-    )
-
-    if czy_jasny_tekst:
-        kolor_pomocniczy = (225, 225, 225, 255)
-        kolor_akcentu = (255, 255, 255, 255)
-        kolor_badge = (255, 255, 255, 255)
-        kolor_badge_tekstu = (28, 28, 32, 255)
-    else:
-        kolor_pomocniczy = (82, 78, 74, 255)
-
-        kolor_akcentu_rgb = mieszaj_kolory(
-            kolor_tla,
-            (30, 30, 34),
-            0.48,
-        )
-
-        kolor_akcentu = kolor_akcentu_rgb + (255,)
-        kolor_badge = kolor_akcentu
-        kolor_badge_tekstu = (255, 255, 255, 255)
-
-    # Subtelna pionowa linia po lewej stronie tekstu
-    draw.rounded_rectangle(
-        (168, 267, 176, 535),
-        radius=4,
-        fill=kolor_akcentu,
-    )
-
-    # Bardzo delikatna dekoracja za okładką
-    dekoracja = Image.new(
+    panel = Image.new(
         "RGBA",
         canvas.size,
         (0, 0, 0, 0),
     )
 
-    draw_dekoracja = ImageDraw.Draw(dekoracja)
-
-    draw_dekoracja.ellipse(
-        (1030, 60, 1585, 660),
-        fill=(255, 255, 255, 45),
+    draw_panel = ImageDraw.Draw(
+        panel
     )
 
-    draw_dekoracja.ellipse(
-        (1110, 125, 1530, 600),
-        outline=(255, 255, 255, 80),
+    kolor_panelu = mieszaj_kolory(
+        kolor_akcentowy,
+        (25, 25, 30),
+        0.12,
+    )
+
+    draw_panel.rounded_rectangle(
+        (
+            970,
+            -90,
+            1730,
+            810,
+        ),
+        radius=125,
+        fill=kolor_panelu + (255,),
+    )
+
+    draw_panel.ellipse(
+        (
+            1025,
+            25,
+            1625,
+            695,
+        ),
+        fill=(255, 255, 255, 24),
+    )
+
+    draw_panel.ellipse(
+        (
+            1110,
+            115,
+            1545,
+            605,
+        ),
+        outline=(255, 255, 255, 70),
         width=3,
+    )
+
+    draw_panel.line(
+        (
+            1010,
+            145,
+            1560,
+            75,
+        ),
+        fill=(255, 255, 255, 48),
+        width=2,
     )
 
     canvas = Image.alpha_composite(
         canvas,
-        dekoracja,
+        panel,
     )
 
-    # Ponowna inicjalizacja draw po alpha_composite
     draw = ImageDraw.Draw(canvas)
 
     # ========================================================
-    # 3. LOGO
+    # LOGO
     # ========================================================
 
-    tekst_x = 215
-    y = 92
+    tekst_x = 205
+    y = 62
 
-    if sciezka_logo and os.path.exists(sciezka_logo):
+    if (
+        sciezka_logo
+        and os.path.exists(sciezka_logo)
+    ):
         logo = wczytaj_obraz(
             sciezka_logo
         )
 
-        logo.thumbnail(
-            (440, 115),
-            Image.Resampling.LANCZOS,
+        logo = przygotuj_duze_logo(
+            logo,
+            maks_szerokosc=590,
+            maks_wysokosc=150,
         )
 
         canvas.alpha_composite(
             logo,
-            (tekst_x, y),
+            (
+                tekst_x,
+                y,
+            ),
         )
 
-        y += logo.height + 55
+        y += logo.height + 42
+
     else:
-        y = 145
+        y = 150
 
     # ========================================================
-    # 4. MAŁA ETYKIETA NAD TYTUŁEM
+    # ETYKIETA
     # ========================================================
+
+    kolor_tekstu = (
+        27,
+        27,
+        31,
+        255,
+    )
+
+    kolor_pomocniczy_rgb = mieszaj_kolory(
+        kolor_akcentowy,
+        (27, 27, 31),
+        0.34,
+    )
+
+    kolor_pomocniczy = (
+        kolor_pomocniczy_rgb + (255,)
+    )
+
+    poczatek_linii = y
 
     font_etykieta = pobierz_czcionke(
         SCIEZKA_FONT_SEMIBOLD,
         23,
     )
 
-    etykieta = "NOWE WYDANIE"
-
     draw.text(
         (tekst_x, y),
-        etykieta,
+        "NOWE WYDANIE",
         font=font_etykieta,
         fill=kolor_pomocniczy,
     )
 
-    y += 52
+    y += 53
 
     # ========================================================
-    # 5. GŁÓWNY TYTUŁ
+    # GŁÓWNY TEKST
     # ========================================================
 
     tekst_gora = (
@@ -1672,13 +2040,17 @@ def generuj_cover_fb(
         or "Nowy numer już dostępny"
     )
 
-    font_glowny, linie_glowne, wysokosc_linii = dopasuj_tekst(
+    (
+        font_glowny,
+        linie_glowne,
+        wysokosc_linii,
+    ) = dopasuj_tekst(
         tekst=tekst_gora,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
         maks_rozmiar=61,
-        min_rozmiar=40,
-        maks_szerokosc=720,
-        maks_wysokosc=225,
+        min_rozmiar=38,
+        maks_szerokosc=690,
+        maks_wysokosc=220,
         odstep_linii=10,
         maks_linii=3,
     )
@@ -1694,12 +2066,14 @@ def generuj_cover_fb(
         y += wysokosc_linii
 
     # ========================================================
-    # 6. DATA / INFORMACJA W ETYKIECIE
+    # DATA
     # ========================================================
 
-    y += 29
+    y += 27
 
-    tekst_dol = tekst_dol.strip().upper()
+    tekst_dol = (
+        tekst_dol.strip().upper()
+    )
 
     if tekst_dol:
         font_badge = pobierz_czcionke(
@@ -1712,16 +2086,17 @@ def generuj_cover_fb(
             tekst_dol,
         )
 
-        padding_x = 28
-        wysokosc_badge = 54
+        padding_x = 29
+        wysokosc_badge = 55
 
         szerokosc_badge = int(
-            szerokosc_napisu + padding_x * 2
+            szerokosc_napisu
+            + padding_x * 2
         )
 
         szerokosc_badge = min(
             szerokosc_badge,
-            520,
+            530,
         )
 
         draw.rounded_rectangle(
@@ -1731,12 +2106,10 @@ def generuj_cover_fb(
                 tekst_x + szerokosc_badge,
                 y + wysokosc_badge,
             ),
-            radius=27,
-            fill=kolor_badge,
+            radius=28,
+            fill=kolor_akcentowy + (255,),
         )
 
-        # Używamy bezpośrednio ImageDraw zamiast Pilmoji.
-        # Dzięki temu data zawsze zostanie narysowana.
         draw.text(
             (
                 tekst_x + szerokosc_badge / 2,
@@ -1744,65 +2117,92 @@ def generuj_cover_fb(
             ),
             tekst_dol,
             font=font_badge,
-            fill=kolor_badge_tekstu,
+            fill=(255, 255, 255, 255),
             anchor="mm",
         )
 
+        koniec_linii = (
+            y + wysokosc_badge
+        )
+
+    else:
+        koniec_linii = y
+
+    # Pionowa linia dopasowana do tekstu.
+    draw.rounded_rectangle(
+        (
+            160,
+            poczatek_linii,
+            168,
+            koniec_linii,
+        ),
+        radius=4,
+        fill=kolor_akcentowy + (255,),
+    )
+
     # ========================================================
-    # 7. OKŁADKA MAGAZYNU
+    # OKŁADKA
     # ========================================================
 
     okladka = wczytaj_obraz(
         zrodlo_okladki
     )
 
-    # Okładka nie może zdominować całego covera
     okladka.thumbnail(
-        (410, 545),
+        (400, 535),
         Image.Resampling.LANCZOS,
     )
 
-    # Cienka, elegancka ramka
-    okladka_z_ramką = ImageOps.expand(
+    okladka_z_ramka = ImageOps.expand(
         okladka,
         border=5,
         fill=(255, 255, 255, 255),
     )
 
-    # Minimalny obrót – mniej agresywny niż wcześniej
-    okladka_z_ramką = okladka_z_ramką.rotate(
-        -0.7,
+    okladka_z_ramka = okladka_z_ramka.rotate(
+        -0.5,
         resample=Image.Resampling.BICUBIC,
         expand=True,
     )
 
-    pozycja_x = 1060
+    pozycja_x = 1040
+
     pozycja_y = int(
-        (wysokosc - okladka_z_ramką.height) / 2
+        (
+            wysokosc
+            - okladka_z_ramka.height
+        ) / 2
     )
 
-    # Pilnujemy bezpiecznej prawej krawędzi
-    if pozycja_x + okladka_z_ramką.width > 1480:
+    # Prawa krawędź pozostaje w bezpiecznej strefie.
+    if (
+        pozycja_x
+        + okladka_z_ramka.width
+        > 1455
+    ):
         pozycja_x = (
-            1480 - okladka_z_ramką.width
+            1455
+            - okladka_z_ramka.width
         )
 
     # ========================================================
-    # 8. MIĘKKI CIEŃ
+    # CIEŃ
     # ========================================================
 
-    maska_okladki = okladka_z_ramką.getchannel(
-        "A"
+    maska_okladki = (
+        okladka_z_ramka.getchannel("A")
     )
 
     element_cienia = Image.new(
         "RGBA",
-        okladka_z_ramką.size,
-        (25, 22, 20, 0),
+        okladka_z_ramka.size,
+        (12, 12, 18, 0),
     )
 
     maska_cienia = maska_okladki.point(
-        lambda alfa: int(alfa * 0.32)
+        lambda alfa: int(
+            alfa * 0.40
+        )
     )
 
     element_cienia.putalpha(
@@ -1818,13 +2218,13 @@ def generuj_cover_fb(
     warstwa_cienia.alpha_composite(
         element_cienia,
         (
-            pozycja_x + 18,
-            pozycja_y + 24,
+            pozycja_x + 21,
+            pozycja_y + 25,
         ),
     )
 
     warstwa_cienia = warstwa_cienia.filter(
-        ImageFilter.GaussianBlur(24)
+        ImageFilter.GaussianBlur(26)
     )
 
     canvas = Image.alpha_composite(
@@ -1833,7 +2233,7 @@ def generuj_cover_fb(
     )
 
     canvas.alpha_composite(
-        okladka_z_ramką,
+        okladka_z_ramka,
         (
             pozycja_x,
             pozycja_y,
@@ -1846,19 +2246,30 @@ def generuj_cover_fb(
     )
 
 
-def dodaj_podglad_strefy_bezpiecznej(cover_bytes):
-    obraz = wczytaj_obraz(cover_bytes)
+def dodaj_podglad_strefy_bezpiecznej(
+    cover_bytes,
+):
+    obraz = wczytaj_obraz(
+        cover_bytes
+    )
+
     nakladka = Image.new(
         "RGBA",
         obraz.size,
         (0, 0, 0, 0),
     )
 
-    draw = ImageDraw.Draw(nakladka)
+    draw = ImageDraw.Draw(
+        nakladka
+    )
 
-    # Uniwersalna bezpieczna strefa
     draw.rectangle(
-        (180, 48, 1460, 672),
+        (
+            180,
+            48,
+            1460,
+            672,
+        ),
         outline=(255, 70, 70, 230),
         width=4,
     )
@@ -1869,9 +2280,14 @@ def dodaj_podglad_strefy_bezpiecznej(cover_bytes):
     )
 
     draw.rounded_rectangle(
-        (195, 60, 510, 105),
+        (
+            195,
+            60,
+            510,
+            105,
+        ),
         radius=12,
-        fill=(255, 70, 70, 210),
+        fill=(255, 70, 70, 220),
     )
 
     draw.text(
@@ -1999,12 +2415,17 @@ def wygeneruj_grafiki(
     kolor_wymuszony=None,
 ):
     if kolor_wymuszony is not None:
-        kolor_ze_zdjecia = znormalizuj_kolor_podkladu(
-            kolor_wymuszony
+        kolor_ze_zdjecia = (
+            znormalizuj_kolor_podkladu(
+                kolor_wymuszony
+            )
         )
+
     else:
-        kolor_ze_zdjecia = kolor_podkladu_ze_zdjecia(
-            zrodlo_zdjecia
+        kolor_ze_zdjecia = (
+            kolor_podkladu_ze_zdjecia(
+                zrodlo_zdjecia
+            )
         )
 
     gotowe = {}
@@ -2030,6 +2451,7 @@ def wygeneruj_grafiki(
                 is_audio=is_audio,
                 kolor_podkladu=kolor,
             )
+
         else:
             wynik = generuj_grafike_split(
                 zrodlo_zdjecia=zrodlo_zdjecia,
@@ -2042,14 +2464,20 @@ def wygeneruj_grafiki(
 
         gotowe[klucz] = wynik
 
-    return gotowe, kolor_ze_zdjecia
+    return (
+        gotowe,
+        kolor_ze_zdjecia,
+    )
 
 
 # ============================================================
-# ANALITYKA GOOGLE SHEETS
+# ANALITYKA
 # ============================================================
 
-def aktualizuj_licznik(styl_grafiki, uzyte_logo):
+def aktualizuj_licznik(
+    styl_grafiki,
+    uzyte_logo,
+):
     nazwa_marki = (
         uzyte_logo
         if uzyte_logo
@@ -2058,14 +2486,21 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
 
     teraz = datetime.datetime.now(
         ZoneInfo("Europe/Warsaw")
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    ).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     try:
-        if "GOOGLE_CREDENTIALS_JSON" not in st.secrets:
+        if (
+            "GOOGLE_CREDENTIALS_JSON"
+            not in st.secrets
+        ):
             return
 
         creds_json = json.loads(
-            st.secrets["GOOGLE_CREDENTIALS_JSON"]
+            st.secrets[
+                "GOOGLE_CREDENTIALS_JSON"
+            ]
         )
 
         gc = gspread.service_account_from_dict(
@@ -2076,9 +2511,7 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
             "Statystyki_Grafik_FB"
         )
 
-        worksheet = arkusz.sheet1
-
-        worksheet.append_row(
+        arkusz.sheet1.append_row(
             [
                 teraz,
                 styl_grafiki,
@@ -2087,21 +2520,15 @@ def aktualizuj_licznik(styl_grafiki, uzyte_logo):
             value_input_option="RAW",
         )
 
-        print(
-            "✅ Zapisano statystykę:",
-            styl_grafiki,
-            nazwa_marki,
-        )
-
     except Exception as blad:
         print(
-            "❌ Błąd zapisu do Arkuszy Google:",
+            "Błąd zapisu statystyki:",
             blad,
         )
 
 
 # ============================================================
-# INTERFEJS STREAMLIT
+# STREAMLIT
 # ============================================================
 
 st.set_page_config(
@@ -2110,20 +2537,23 @@ st.set_page_config(
     layout="centered",
 )
 
-st.title("🎨 Automatyczny Generator Grafik")
+st.title(
+    "🎨 Automatyczny Generator Grafik"
+)
+
 st.write(
     "Wybierz rodzaj grafiki, którą chcesz stworzyć."
 )
-st.caption(f"Wersja {WERSJA_APP}")
+
+st.caption(
+    f"Wersja {WERSJA_APP}"
+)
 
 try:
     przygotuj_czcionki()
+
 except Exception as blad:
     st.error(str(blad))
-    st.info(
-        "Dodaj pliki Montserrat-Bold.ttf i "
-        "Montserrat-SemiBold.ttf do katalogu assets/fonts."
-    )
     st.stop()
 
 
@@ -2141,9 +2571,16 @@ os.makedirs(
 
 dostepne_loga = [
     plik
-    for plik in os.listdir(KATALOG_LOGOTYPOW)
+    for plik in os.listdir(
+        KATALOG_LOGOTYPOW
+    )
     if plik.lower().endswith(
-        (".png", ".jpg", ".jpeg", ".webp")
+        (
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+        )
     )
 ]
 
@@ -2155,20 +2592,39 @@ if dostepne_loga:
     indeks_bd = next(
         (
             i
-            for i, nazwa in enumerate(dostepne_loga)
+            for i, nazwa in enumerate(
+                dostepne_loga
+            )
             if "budujemydom" in nazwa.lower()
         ),
         None,
     )
 
     if indeks_bd is not None:
-        logo_bd = dostepne_loga.pop(indeks_bd)
-        dostepne_loga.insert(0, logo_bd)
-        dostepne_loga.insert(1, OPCJA_BEZ_LOGA)
+        logo_bd = dostepne_loga.pop(
+            indeks_bd
+        )
+
+        dostepne_loga.insert(
+            0,
+            logo_bd,
+        )
+
+        dostepne_loga.insert(
+            1,
+            OPCJA_BEZ_LOGA,
+        )
+
     else:
-        dostepne_loga.insert(0, OPCJA_BEZ_LOGA)
+        dostepne_loga.insert(
+            0,
+            OPCJA_BEZ_LOGA,
+        )
+
 else:
-    dostepne_loga = [OPCJA_BEZ_LOGA]
+    dostepne_loga = [
+        OPCJA_BEZ_LOGA
+    ]
 
 
 if "wygenerowano" not in st.session_state:
@@ -2184,7 +2640,7 @@ tab1, tab2 = st.tabs(
 
 
 # ============================================================
-# ZAKŁADKA 1 – POSTY
+# ZAKŁADKA 1
 # ============================================================
 
 with tab1:
@@ -2205,7 +2661,10 @@ with tab1:
         use_container_width=True,
     ):
         if not url_input.strip():
-            st.warning("Najpierw wklej link.")
+            st.warning(
+                "Najpierw wklej link."
+            )
+
         else:
             with st.spinner(
                 "Pobieram artykuł i generuję grafiki..."
@@ -2221,26 +2680,49 @@ with tab1:
                     )
 
                     is_audio_brand = bool(
-                        wybrane_logo != OPCJA_BEZ_LOGA
-                        and "audio" in wybrane_logo.lower()
+                        wybrane_logo
+                        != OPCJA_BEZ_LOGA
+                        and "audio"
+                        in wybrane_logo.lower()
                     )
 
-                    tytul, obraz_bytes = pobierz_dane_z_artykulu(
+                    (
+                        tytul,
+                        obraz_bytes,
+                    ) = pobierz_dane_z_artykulu(
                         url_input.strip()
                     )
 
-                    grafiki, kolor_uzyty = wygeneruj_grafiki(
+                    (
+                        grafiki,
+                        kolor_uzyty,
+                    ) = wygeneruj_grafiki(
                         zrodlo_zdjecia=obraz_bytes,
                         sciezka_do_logo=sciezka_do_logo,
                         tytul=tytul,
                         is_audio=is_audio_brand,
                     )
 
-                    st.session_state.obraz_artykulu = obraz_bytes
-                    st.session_state.aktualny_tytul = tytul
-                    st.session_state.sciezka_do_logo = sciezka_do_logo
-                    st.session_state.is_audio_brand = is_audio_brand
-                    st.session_state.logo_nazwa = wybrane_logo
+                    st.session_state.obraz_artykulu = (
+                        obraz_bytes
+                    )
+
+                    st.session_state.aktualny_tytul = (
+                        tytul
+                    )
+
+                    st.session_state.sciezka_do_logo = (
+                        sciezka_do_logo
+                    )
+
+                    st.session_state.is_audio_brand = (
+                        is_audio_brand
+                    )
+
+                    st.session_state.logo_nazwa = (
+                        wybrane_logo
+                    )
+
                     st.session_state.kolor_reczny = None
                     st.session_state.grafiki = grafiki
                     st.session_state.kolor_uzyty = kolor_uzyty
@@ -2254,16 +2736,16 @@ with tab1:
                         "lub wygenerować grafik."
                     )
 
-                    st.caption(str(blad))
+                    st.caption(
+                        str(blad)
+                    )
 
-    if st.session_state.get("wygenerowano", False):
-        bezpieczny_tytul = st.session_state.get(
-            "aktualny_tytul",
-            "Twojego artykułu",
-        )
-
+    if st.session_state.get(
+        "wygenerowano",
+        False,
+    ):
         st.success(
-            f"Grafiki dla: {bezpieczny_tytul}"
+            "Grafiki zostały wygenerowane."
         )
 
         def pokaz_pare(klucze):
@@ -2282,14 +2764,18 @@ with tab1:
 
                 with kolumna:
                     st.image(
-                        st.session_state.grafiki[klucz],
+                        st.session_state.grafiki[
+                            klucz
+                        ],
                         caption=podpis,
                         use_container_width=True,
                     )
 
                     st.download_button(
                         label=etykieta,
-                        data=st.session_state.grafiki[klucz],
+                        data=st.session_state.grafiki[
+                            klucz
+                        ],
                         file_name=nazwa_pliku,
                         mime="image/jpeg",
                         use_container_width=True,
@@ -2306,10 +2792,6 @@ with tab1:
         z_komentarzem = st.toggle(
             "Napis „ARTYKUŁ W KOMENTARZU”",
             value=True,
-            help=(
-                "Wyłącz, aby pokazać warianty "
-                "bez stopki."
-            ),
         )
 
         sufiks = (
@@ -2318,11 +2800,8 @@ with tab1:
             else "_bez"
         )
 
-        st.subheader("🎨 Kolor ze zdjęcia")
-
-        st.caption(
-            "Kolor podlewki jest wyliczany ze zdjęcia. "
-            "Możesz go później zmienić ręcznie."
+        st.subheader(
+            "🎨 Kolor ze zdjęcia"
         )
 
         pokaz_pare(
@@ -2344,11 +2823,6 @@ with tab1:
             with st.expander(
                 f"🎚️ Kolor podlewki: {hex_uzyty}"
             ):
-                st.caption(
-                    "Wybrany kolor zostanie przyciemniony, "
-                    "aby biały tekst pozostał czytelny."
-                )
-
                 nowy_kolor = st.color_picker(
                     "Wybierz kolor:",
                     value=hex_uzyty,
@@ -2356,7 +2830,9 @@ with tab1:
 
                 kol_a, kol_b = st.columns(2)
 
-                def przelicz_posty(kolor_wymuszony):
+                def przelicz_posty(
+                    kolor_wymuszony
+                ):
                     (
                         st.session_state.grafiki,
                         st.session_state.kolor_uzyty,
@@ -2384,10 +2860,9 @@ with tab1:
                     "🎨 Zastosuj kolor",
                     use_container_width=True,
                 ):
-                    with st.spinner("Przeliczam grafiki..."):
-                        przelicz_posty(
-                            hex_na_rgb(nowy_kolor)
-                        )
+                    przelicz_posty(
+                        hex_na_rgb(nowy_kolor)
+                    )
 
                     st.rerun()
 
@@ -2395,13 +2870,14 @@ with tab1:
                     "↩️ Kolor ze zdjęcia",
                     use_container_width=True,
                 ):
-                    with st.spinner("Przeliczam grafiki..."):
-                        przelicz_posty(None)
-
+                    przelicz_posty(None)
                     st.rerun()
 
         st.markdown("---")
-        st.subheader("⬛ Klasyczne, czarne")
+
+        st.subheader(
+            "⬛ Klasyczne, czarne"
+        )
 
         pokaz_pare(
             [
@@ -2411,7 +2887,6 @@ with tab1:
         )
 
         st.markdown("---")
-        st.subheader("✍️ Edycja tytułu")
 
         nowy_tytul = st.text_area(
             (
@@ -2426,39 +2901,38 @@ with tab1:
             "🔄 Zaktualizuj napisy",
             use_container_width=True,
         ):
-            with st.spinner("Odświeżam grafiki..."):
-                try:
-                    (
-                        st.session_state.grafiki,
-                        st.session_state.kolor_uzyty,
-                    ) = wygeneruj_grafiki(
-                        zrodlo_zdjecia=(
-                            st.session_state.obraz_artykulu
-                        ),
-                        sciezka_do_logo=(
-                            st.session_state.sciezka_do_logo
-                        ),
-                        tytul=nowy_tytul,
-                        is_audio=(
-                            st.session_state.is_audio_brand
-                        ),
-                        kolor_wymuszony=(
-                            st.session_state.get(
-                                "kolor_reczny"
-                            )
-                        ),
-                    )
+            try:
+                (
+                    st.session_state.grafiki,
+                    st.session_state.kolor_uzyty,
+                ) = wygeneruj_grafiki(
+                    zrodlo_zdjecia=(
+                        st.session_state.obraz_artykulu
+                    ),
+                    sciezka_do_logo=(
+                        st.session_state.sciezka_do_logo
+                    ),
+                    tytul=nowy_tytul,
+                    is_audio=(
+                        st.session_state.is_audio_brand
+                    ),
+                    kolor_wymuszony=(
+                        st.session_state.get(
+                            "kolor_reczny"
+                        )
+                    ),
+                )
 
-                    st.session_state.aktualny_tytul = (
-                        nowy_tytul
-                    )
+                st.session_state.aktualny_tytul = (
+                    nowy_tytul
+                )
 
-                    st.rerun()
+                st.rerun()
 
-                except Exception as blad:
-                    st.error(
-                        f"Nie udało się zaktualizować grafik: {blad}"
-                    )
+            except Exception as blad:
+                st.error(
+                    f"Nie udało się zaktualizować grafik: {blad}"
+                )
 
 
 # ============================================================
@@ -2467,15 +2941,17 @@ with tab1:
 
 with tab2:
     st.info(
-        "Nowoczesny cover ma rozmiar 1640 × 720 px. "
-        "Najważniejsze elementy są umieszczane w centralnej "
-        "strefie bezpiecznej dla desktopu i telefonu."
+        "Cover jest generowany w rozmiarze "
+        "1640 × 720 px z bezpiecznym obszarem "
+        "dla komputerów i telefonów."
     )
 
     indeks_cnw = next(
         (
             i
-            for i, nazwa in enumerate(dostepne_loga)
+            for i, nazwa in enumerate(
+                dostepne_loga
+            )
             if (
                 "czas" in nazwa.lower()
                 or "wnetrze" in nazwa.lower()
@@ -2497,7 +2973,12 @@ with tab2:
 
         wgrana_okladka = st.file_uploader(
             "Wgraj okładkę JPG, PNG lub WEBP:",
-            type=["jpg", "jpeg", "png", "webp"],
+            type=[
+                "jpg",
+                "jpeg",
+                "png",
+                "webp",
+            ],
             key="okladka_cover",
         )
 
@@ -2518,18 +2999,14 @@ with tab2:
         )
 
         kolor_reczny_covera = st.color_picker(
-            "Ręczny kolor tła:",
-            value="#E5D1D4",
+            "Ręczny kolor akcentu:",
+            value="#B13779",
             disabled=auto_kolor_covera,
         )
 
         pokaz_strefe = st.checkbox(
             "Pokaż strefę bezpieczną w podglądzie",
             value=False,
-            help=(
-                "Czerwona ramka pojawia się tylko "
-                "w podglądzie, nie w pobieranym pliku."
-            ),
         )
 
     if st.button(
@@ -2541,19 +3018,26 @@ with tab2:
             st.warning(
                 "Najpierw wgraj plik z okładką."
             )
+
         else:
             with st.spinner(
                 "Projektuję nowoczesny cover..."
             ):
                 try:
-                    dane_okladki = wgrana_okladka.getvalue()
+                    dane_okladki = (
+                        wgrana_okladka.getvalue()
+                    )
 
-                    # Walidacja pliku obrazu
-                    wczytaj_obraz(dane_okladki)
+                    wczytaj_obraz(
+                        dane_okladki
+                    )
 
                     sciezka_logo_cover = (
                         None
-                        if wybrane_logo_cover == OPCJA_BEZ_LOGA
+                        if (
+                            wybrane_logo_cover
+                            == OPCJA_BEZ_LOGA
+                        )
                         else os.path.join(
                             KATALOG_LOGOTYPOW,
                             wybrane_logo_cover,
@@ -2561,9 +3045,12 @@ with tab2:
                     )
 
                     if auto_kolor_covera:
-                        kolor_tla = kolor_pastelowy_ze_zdjecia(
-                            dane_okladki
+                        kolor_tla = (
+                            kolor_pastelowy_ze_zdjecia(
+                                dane_okladki
+                            )
                         )
+
                     else:
                         kolor_tla = hex_na_rgb(
                             kolor_reczny_covera
@@ -2577,33 +3064,46 @@ with tab2:
                         kolor_tla=kolor_tla,
                     )
 
-                    st.session_state.cover_bytes = cover_bytes
-                    st.session_state.cover_kolor = kolor_tla
-                    st.session_state.cover_wygenerowany = True
+                    st.session_state.cover_bytes = (
+                        cover_bytes
+                    )
+
+                    st.session_state.cover_wygenerowany = (
+                        True
+                    )
 
                     st.success(
                         "Cover został wygenerowany."
                     )
 
                 except Exception as blad:
-                    st.session_state.cover_wygenerowany = False
+                    st.session_state.cover_wygenerowany = (
+                        False
+                    )
 
                     st.error(
                         "Nie udało się wygenerować covera."
                     )
 
-                    st.caption(str(blad))
+                    st.caption(
+                        str(blad)
+                    )
 
     if st.session_state.get(
         "cover_wygenerowany",
         False,
     ):
-        cover_bytes = st.session_state.cover_bytes
+        cover_bytes = (
+            st.session_state.cover_bytes
+        )
 
         if pokaz_strefe:
-            podglad_covera = dodaj_podglad_strefy_bezpiecznej(
-                cover_bytes
+            podglad_covera = (
+                dodaj_podglad_strefy_bezpiecznej(
+                    cover_bytes
+                )
             )
+
         else:
             podglad_covera = cover_bytes
 
@@ -2619,15 +3119,6 @@ with tab2:
             ),
             use_container_width=True,
         )
-
-        kolor_covera = st.session_state.get(
-            "cover_kolor"
-        )
-
-        if kolor_covera:
-            st.caption(
-                f"Kolor bazowy: {rgb_na_hex(kolor_covera)}"
-            )
 
         st.download_button(
             label="📥 Pobierz Cover FB",
