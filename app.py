@@ -1933,14 +1933,8 @@ def generuj_cover_fb(
         255,
     )
 
-    kolor_pomocniczy_rgb = mieszaj_kolory(
-        kolor_akcentowy,
-        (27, 27, 31),
-        0.34,
-    )
-
-    kolor_pomocniczy = (
-        kolor_pomocniczy_rgb + (255,)
+    # Ciemnoszary, zawsze czytelny na jasnym tle
+    kolor_pomocniczy = (90, 90, 95, 255)
     )
 
     poczatek_linii = y
@@ -2035,7 +2029,7 @@ def generuj_cover_fb(
                 y + wysokosc_badge,
             ),
             radius=28,
-            fill=kolor_akcentowy + (255,),
+            fill=(27, 27, 31, 255), # Ciemny grafit, tło dla białego tekstu
         )
 
         draw.text(
@@ -2065,7 +2059,7 @@ def generuj_cover_fb(
             koniec_linii,
         ),
         radius=4,
-        fill=kolor_akcentowy + (255,),
+        fill=(27, 27, 31, 255), # Ciemny grafit
     )
 
     # ========================================================
