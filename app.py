@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.4 – usunięto kolorowy panel z covera"
+    "5.5 – powiększona okładka i wyrównanie do bezpiecznej strefy"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -2078,25 +2078,26 @@ def generuj_cover_fb(
         zrodlo_okladki
     )
 
+    # Większa okładka – niemal do granic bezpiecznego obszaru.
+    # Bezpieczny obszar ma wysokość 624 px: od Y=48 do Y=672.
     okladka.thumbnail(
-        (400, 535),
+        (455, 600),
         Image.Resampling.LANCZOS,
     )
 
     okladka_z_ramka = ImageOps.expand(
         okladka,
-        border=5,
+        border=4,
         fill=(255, 255, 255, 255),
     )
 
     okladka_z_ramka = okladka_z_ramka.rotate(
-        -0.5,
+        -0.25,
         resample=Image.Resampling.BICUBIC,
         expand=True,
     )
 
-    pozycja_x = 1040
-
+    # Wyśrodkowanie pionowe.
     pozycja_y = int(
         (
             wysokosc
@@ -2104,15 +2105,28 @@ def generuj_cover_fb(
         ) / 2
     )
 
-    # Prawa krawędź pozostaje w bezpiecznej strefie.
+    # Prawa krawędź bezpiecznego obszaru Facebooka.
+    prawa_krawedz_bezpieczna = 1460
+
+    pozycja_x = (
+        prawa_krawedz_bezpieczna
+        - okladka_z_ramka.width
+    )
+
+    # Dodatkowe zabezpieczenie pionowe.
+    pozycja_y = max(
+        48,
+        pozycja_y,
+    )
+
     if (
-        pozycja_x
-        + okladka_z_ramka.width
-        > 1455
+        pozycja_y
+        + okladka_z_ramka.height
+        > 672
     ):
-        pozycja_x = (
-            1455
-            - okladka_z_ramka.width
+        pozycja_y = (
+            672
+            - okladka_z_ramka.height
         )
 
     # ========================================================
