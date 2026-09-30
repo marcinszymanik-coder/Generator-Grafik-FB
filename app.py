@@ -730,6 +730,12 @@ def podziel_dlugie_slowo(
     font,
     maks_szerokosc,
 ):
+    # Wyjątek: Zabezpieczenie adresów URL przed dzieleniem
+    # Jeśli słowo wygląda jak domena, nie dzielimy go znak po znaku, 
+    # tylko zwracamy w całości, by wymusić przeniesienie go do nowej linii.
+    if ".pl" in slowo.lower() or ".com" in slowo.lower() or "www." in slowo.lower():
+        return [slowo]
+
     fragmenty = []
     aktualny = ""
 
