@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.5 – powiększona okładka i wyrównanie do bezpiecznej strefy"
+    "5.6 – możliwość świadomego przełamywania linii w coverze"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -2927,9 +2927,10 @@ with tab2:
         )
 
     with col2:
-        tekst_gora = st.text_input(
-            "Główny tekst:",
+        tekst_gora = st.text_area(
+            "Główny tekst (użyj Enter, aby przełamać linię):",
             value="Nowy numer już dostępny",
+            height=68,
         )
 
         tekst_dol = st.text_input(
