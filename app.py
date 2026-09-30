@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.2 – większe logo i nowoczesny cover Facebook"
+    "5.3 – usunięto dekoracyjne elipsy z covera"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -1919,38 +1919,6 @@ def generuj_cover_fb(
         ),
         radius=125,
         fill=kolor_panelu + (255,),
-    )
-
-    draw_panel.ellipse(
-        (
-            1025,
-            25,
-            1625,
-            695,
-        ),
-        fill=(255, 255, 255, 24),
-    )
-
-    draw_panel.ellipse(
-        (
-            1110,
-            115,
-            1545,
-            605,
-        ),
-        outline=(255, 255, 255, 70),
-        width=3,
-    )
-
-    draw_panel.line(
-        (
-            1010,
-            145,
-            1560,
-            75,
-        ),
-        fill=(255, 255, 255, 48),
-        width=2,
     )
 
     canvas = Image.alpha_composite(
