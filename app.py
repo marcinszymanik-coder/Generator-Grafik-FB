@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.7 – Ciemny grafit detali dla pełnej czytelności"
+    "5.8 – Harmonijne detale pobierane z okładki (zamiast sztywnych grafitów)"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -1096,7 +1096,6 @@ def kolor_pastelowy_ze_zdjecia(
             zrodlo_obrazu
         )
 
-        # Zwiększamy widełki nasycenia, by kolor był bardziej soczysty
         nasycenie_docelowe = ogranicz(
             0.15 + nasycenie * 0.40,
             0.15,
@@ -1191,16 +1190,19 @@ def kolor_akcentowy_ze_zdjecia(
 
         h, s, v = najlepszy_kolor
 
+        # Gwarantujemy, że kolor akcentowy będzie ciemny i nasycony, 
+        # aby był w 100% czytelny jako tło dla białego tekstu 
+        # i jako element na jasnym coverze.
         s = ogranicz(
-            s * 1.08,
-            0.48,
-            0.82,
+            s * 1.30,
+            0.60,
+            0.85,
         )
 
         v = ogranicz(
             v,
-            0.48,
-            0.76,
+            0.20,
+            0.45,
         )
 
         r, g, b = colorsys.hsv_to_rgb(
@@ -1216,7 +1218,7 @@ def kolor_akcentowy_ze_zdjecia(
         )
 
     except Exception:
-        return (177, 55, 121)
+        return (70, 30, 45) # Zapasowy, głęboki odcień
 
 
 # ============================================================
@@ -1842,19 +1844,10 @@ def generuj_cover_fb(
         zrodlo_okladki
     )
 
-    _, nasycenie_reczne, _ = colorsys.rgb_to_hsv(
-        kolor_tla[0] / 255,
-        kolor_tla[1] / 255,
-        kolor_tla[2] / 255,
-    )
-
-    if nasycenie_reczne > 0.32:
-        kolor_akcentowy = kolor_tla
-
-    # Używamy pełnego, w 100% wyliczonego (lub wybranego) koloru tła
+    # Używamy wybranego (lub zautomatyzowanego) koloru tła
     kolor_lewy = kolor_tla
 
-    # Prawą stronę minimalnie przyciemniamy, by uzyskać ładny gradient pod okładką
+    # Delikatny gradient
     kolor_prawy = mieszaj_kolory(
         kolor_tla,
         (0, 0, 0),
@@ -1930,8 +1923,9 @@ def generuj_cover_fb(
         255,
     )
 
-    # Ciemnoszary, zawsze czytelny na jasnym tle
-    kolor_pomocniczy = (90, 90, 95, 255)
+    # Używamy zaciemnionego koloru z okładki, zamiast surowego grafitu, 
+    # dla spójności i czytelności
+    kolor_pomocniczy = kolor_akcentowy + (255,)
 
     poczatek_linii = y
 
@@ -2025,7 +2019,7 @@ def generuj_cover_fb(
                 y + wysokosc_badge,
             ),
             radius=28,
-            fill=(27, 27, 31, 255), # Ciemny grafit, tło dla białego tekstu
+            fill=kolor_pomocniczy, # Detal dopasowany do okładki
         )
 
         draw.text(
@@ -2055,7 +2049,7 @@ def generuj_cover_fb(
             koniec_linii,
         ),
         radius=4,
-        fill=(27, 27, 31, 255), # Ciemny grafit
+        fill=kolor_pomocniczy, # Detal dopasowany do okładki
     )
 
     # ========================================================
@@ -2067,7 +2061,6 @@ def generuj_cover_fb(
     )
 
     # Większa okładka – niemal do granic bezpiecznego obszaru.
-    # Bezpieczny obszar ma wysokość 624 px: od Y=48 do Y=672.
     okladka.thumbnail(
         (455, 600),
         Image.Resampling.LANCZOS,
@@ -2085,7 +2078,6 @@ def generuj_cover_fb(
         expand=True,
     )
 
-    # Wyśrodkowanie pionowe.
     pozycja_y = int(
         (
             wysokosc
@@ -2093,7 +2085,6 @@ def generuj_cover_fb(
         ) / 2
     )
 
-    # Prawa krawędź bezpiecznego obszaru Facebooka.
     prawa_krawedz_bezpieczna = 1460
 
     pozycja_x = (
@@ -2101,7 +2092,6 @@ def generuj_cover_fb(
         - okladka_z_ramka.width
     )
 
-    # Dodatkowe zabezpieczenie pionowe.
     pozycja_y = max(
         48,
         pozycja_y,
