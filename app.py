@@ -2906,7 +2906,7 @@ with tab2:
     with col2:
         tekst_gora = st.text_area(
             "Główny tekst (użyj Enter, aby przełamać linię):",
-            value="Nowy numer już dostępny",
+            value="Kup stacjonarnie lub na UlubionyKiosk.pl",
             height=68,
         )
 
