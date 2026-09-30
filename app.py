@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.6 – możliwość świadomego przełamywania linii w coverze"
+    "5.7 – Ciemny grafit detali dla pełnej czytelności"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -1838,13 +1838,10 @@ def generuj_cover_fb(
     szerokosc = SZEROKOSC_COVERA
     wysokosc = WYSOKOSC_COVERA
 
-    # Kolor akcentowy pobrany bezpośrednio z okładki.
     kolor_akcentowy = kolor_akcentowy_ze_zdjecia(
         zrodlo_okladki
     )
 
-    # Jeżeli ręcznie wskazano nasycony kolor,
-    # używamy go jako akcentu.
     _, nasycenie_reczne, _ = colorsys.rgb_to_hsv(
         kolor_tla[0] / 255,
         kolor_tla[1] / 255,
@@ -1935,7 +1932,6 @@ def generuj_cover_fb(
 
     # Ciemnoszary, zawsze czytelny na jasnym tle
     kolor_pomocniczy = (90, 90, 95, 255)
-    )
 
     poczatek_linii = y
 
@@ -1959,7 +1955,7 @@ def generuj_cover_fb(
 
     tekst_gora = (
         tekst_gora.strip()
-        or "Do kupienia stacjonarnie oraz UlubionyKiosk.pl"
+        or "Nowy numer już dostępny"
     )
 
     (
@@ -2921,7 +2917,7 @@ with tab2:
     with col2:
         tekst_gora = st.text_area(
             "Główny tekst (użyj Enter, aby przełamać linię):",
-            value="Do kupienia stacjonarnie oraz UlubionyKiosk.pl",
+            value="Nowy numer już dostępny",
             height=68,
         )
 
