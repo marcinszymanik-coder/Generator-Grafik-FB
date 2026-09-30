@@ -690,7 +690,7 @@ with tab2:
                 generuj_cover_fb(sciezka_okladki, sciezka_do_logo_cover, tekst_gora, tekst_dol, nazwa_covera, kolor_tla)
                 
                 st.success("Cover wygenerowany pomyślnie!")
-                st.image(nazwa_covera, use_column_width=True)
+                st.image(nazwa_covera, use_container_width=True)
                 
                 with open(nazwa_covera, "rb") as file:
                     st.download_button(
