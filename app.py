@@ -578,16 +578,18 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
     kandydaci = []
     preferowane = []
 
+    # Zmiana: og:image ląduje od razu w liście 'preferowane', a nie 'kandydaci'
     og_image = soup.find(
         "meta",
         property="og:image",
     )
 
     if og_image and og_image.get("content"):
-        kandydaci.append(
+        preferowane.append(
             og_image.get("content")
         )
 
+    # Zmiana: twitter:image ląduje w liście 'preferowane'
     twitter_image = soup.find(
         "meta",
         attrs={"name": "twitter:image"},
@@ -597,7 +599,7 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
         twitter_image
         and twitter_image.get("content")
     ):
-        kandydaci.append(
+        preferowane.append(
             twitter_image.get("content")
         )
 
