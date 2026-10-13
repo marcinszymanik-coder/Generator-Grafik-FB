@@ -727,8 +727,10 @@ def pobierz_dane_z_artykulu(url):
             if obraz.width >= 300 and obraz.height >= 200:
                 obraz_bytes = kandydat_bytes
                 break # Mamy poprawne zdjęcie, przerywamy pętlę
-        except Exception:
-            continue # Przechodzimy do następnego linku, jeśli ten okazał się błędny
+        except Exception as e:
+            # Wypisujemy błąd do konsoli, by wiedzieć dlaczego link został odrzucony
+            print(f"Odrzucono link: {adres} | Powód: {e}")
+            continue
 
     if not obraz_bytes:
         raise ValueError(
