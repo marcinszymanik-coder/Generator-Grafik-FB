@@ -479,14 +479,15 @@ def bezpieczne_pobranie(
                 )
 
         if oczekiwany_typ == "image":
-            if (
-                content_type
-                and not content_type.startswith("image/")
-            ):
-                raise ValueError(
-                    "Adres nie zwrócił obrazu. "
-                    f"Typ: {content_type}"
-                )
+            pass # Pozwalamy bibliotece PIL zweryfikować, czy plik to faktycznie obraz
+            # if (
+            #     content_type
+            #     and not content_type.startswith("image/")
+            # ):
+            #     raise ValueError(
+            #         "Adres nie zwrócił obrazu. "
+            #         f"Typ: {content_type}"
+            #     )
 
         dlugosc = odpowiedz.headers.get(
             "Content-Length"
@@ -638,6 +639,9 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
             else:
                 kandydaci.append(adres)
 
+    wynikowe_adresy = []
+    odwiedzone = set()
+
     for adres in preferowane + kandydaci:
         if not adres:
             continue
@@ -647,12 +651,12 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
             adres.strip(),
         )
 
-        if pelny_adres.startswith(
-            ("http://", "https://")
-        ):
-            return pelny_adres
+        if pelny_adres.startswith(("http://", "https://")):
+            if pelny_adres not in odwiedzone:
+                odwiedzone.add(pelny_adres)
+                wynikowe_adresy.append(pelny_adres)
 
-    return None
+    return wynikowe_adresy
 
 
 def pobierz_dane_z_artykulu(url):
@@ -692,30 +696,42 @@ def pobierz_dane_z_artykulu(url):
             )
         )
 
-    adres_zdjecia = znajdz_adres_zdjecia(
+    adresy_zdjec = znajdz_adres_zdjecia(
         soup,
         finalny_url,
     )
 
-    if not adres_zdjecia:
+    if not adresy_zdjec:
         raise ValueError(
-            "Nie udało się odnaleźć głównego "
-            "zdjęcia artykułu."
+            "Nie udało się odnaleźć żadnego potencjalnego "
+            "zdjęcia artykułu w kodzie strony."
         )
 
-    obraz_bytes, _, _ = bezpieczne_pobranie(
-        url=adres_zdjecia,
-        maks_rozmiar=MAKS_ROZMIAR_OBRAZU,
-        oczekiwany_typ="image",
-    )
+    obraz_bytes = None
 
-    obraz = wczytaj_obraz(
-        obraz_bytes
-    )
+    # Testujemy kolejne adresy zdjęć aż do skutku
+    for adres in adresy_zdjec:
+        try:
+            kandydat_bytes, _, _ = bezpieczne_pobranie(
+                url=adres,
+                maks_rozmiar=MAKS_ROZMIAR_OBRAZU,
+                oczekiwany_typ="image",
+            )
 
-    if obraz.width < 300 or obraz.height < 200:
+            obraz = wczytaj_obraz(
+                kandydat_bytes
+            )
+
+            if obraz.width >= 300 and obraz.height >= 200:
+                obraz_bytes = kandydat_bytes
+                break # Mamy poprawne zdjęcie, przerywamy pętlę
+        except Exception:
+            continue # Przechodzimy do następnego linku, jeśli ten okazał się błędny
+
+    if not obraz_bytes:
         raise ValueError(
-            "Pobrane zdjęcie jest zbyt małe."
+            "Żaden ze znalezionych linków nie zwrócił poprawnego "
+            "zdjęcia (lub wszystkie były zbyt małe)."
         )
 
     return tytul, obraz_bytes
