@@ -37,7 +37,7 @@ except ImportError:
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
 WERSJA_APP = (
-    "5.8 – Harmonijne detale pobierane z okładki (zamiast sztywnych grafitów)"
+    "5.9 – Harmonijne detale pobierane z okładki (zamiast sztywnych grafitów) + ręczne wymuszanie zdjęcia"
 )
 
 SZEROKOSC_POSTA = 1080
@@ -479,15 +479,7 @@ def bezpieczne_pobranie(
                 )
 
         if oczekiwany_typ == "image":
-            pass # Pozwalamy bibliotece PIL zweryfikować, czy plik to faktycznie obraz
-            # if (
-            #     content_type
-            #     and not content_type.startswith("image/")
-            # ):
-            #     raise ValueError(
-            #         "Adres nie zwrócił obrazu. "
-            #         f"Typ: {content_type}"
-            #     )
+            pass # Pozwalamy bibliotece PIL zweryfikować, czy plik to faktycznie obraz, ignorujemy bledne naglowki z CMS
 
         dlugosc = odpowiedz.headers.get(
             "Content-Length"
@@ -578,7 +570,6 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
     kandydaci = []
     preferowane = []
 
-    # Zmiana: og:image ląduje od razu w liście 'preferowane', a nie 'kandydaci'
     og_image = soup.find(
         "meta",
         property="og:image",
@@ -589,7 +580,6 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
             og_image.get("content")
         )
 
-    # Zmiana: twitter:image ląduje w liście 'preferowane'
     twitter_image = soup.find(
         "meta",
         attrs={"name": "twitter:image"},
@@ -661,7 +651,7 @@ def znajdz_adres_zdjecia(soup, url_artykulu):
     return wynikowe_adresy
 
 
-def pobierz_dane_z_artykulu(url):
+def pobierz_dane_z_artykulu(url, wymuszony_url_zdjecia=None):
     html_bytes, finalny_url, _ = bezpieczne_pobranie(
         url=url,
         maks_rozmiar=MAKS_ROZMIAR_HTML,
@@ -698,6 +688,18 @@ def pobierz_dane_z_artykulu(url):
             )
         )
 
+    # Jeśli użytkownik wkleił ręczny link do zdjęcia
+    if wymuszony_url_zdjecia:
+        kandydat_bytes, _, _ = bezpieczne_pobranie(
+            url=wymuszony_url_zdjecia,
+            maks_rozmiar=MAKS_ROZMIAR_OBRAZU,
+            oczekiwany_typ="image",
+        )
+        # Sprawdzamy czy pobrany obiekt z ręcznego linku to na pewno obraz, żeby uniknąć wywalenia przy generowaniu
+        _ = wczytaj_obraz(kandydat_bytes) 
+        return tytul, kandydat_bytes
+
+    # Zachowanie domyślne - automatyczne poszukiwanie zdjęć
     adresy_zdjec = znajdz_adres_zdjecia(
         soup,
         finalny_url,
@@ -711,7 +713,6 @@ def pobierz_dane_z_artykulu(url):
 
     obraz_bytes = None
 
-    # Testujemy kolejne adresy zdjęć aż do skutku
     for adres in adresy_zdjec:
         try:
             kandydat_bytes, _, _ = bezpieczne_pobranie(
@@ -726,10 +727,8 @@ def pobierz_dane_z_artykulu(url):
 
             if obraz.width >= 300 and obraz.height >= 200:
                 obraz_bytes = kandydat_bytes
-                break # Mamy poprawne zdjęcie, przerywamy pętlę
-        except Exception as e:
-            # Wypisujemy błąd do konsoli, by wiedzieć dlaczego link został odrzucony
-            print(f"Odrzucono link: {adres} | Powód: {e}")
+                break
+        except Exception:
             continue
 
     if not obraz_bytes:
@@ -1124,14 +1123,10 @@ def kolor_podkladu_ze_zdjecia(
 
 def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
     try:
-        # 1. Pobieramy odcień dokładnie tak, jak w dobrze działających postach
         odcien, nasycenie = analiza_barwna(zrodlo_obrazu)
         
-        # 2. Narzucamy bardzo jasny podkład (value blisko 1.0)
         jasnosc = 0.96 
         
-        # 3. Delikatne nasycenie, by kolor nie był brudny
-        # Jeśli zdjęcie jest bardzo szare, dodajemy trochę ciepła
         nasycenie_docelowe = min(max(nasycenie * 0.35, 0.08), 0.18)
 
         r, g, b = colorsys.hsv_to_rgb(
@@ -1147,7 +1142,6 @@ def kolor_pastelowy_ze_zdjecia(zrodlo_obrazu):
         )
 
     except Exception:
-        # Zapasowy, jasny, czysty szary
         return (242, 242, 244)
 
 
@@ -1223,9 +1217,6 @@ def kolor_akcentowy_ze_zdjecia(
 
         h, s, v = najlepszy_kolor
 
-        # Gwarantujemy, że kolor akcentowy będzie ciemny i nasycony, 
-        # aby był w 100% czytelny jako tło dla białego tekstu 
-        # i jako element na jasnym coverze.
         s = ogranicz(
             s * 1.30,
             0.60,
@@ -1251,7 +1242,7 @@ def kolor_akcentowy_ze_zdjecia(
         )
 
     except Exception:
-        return (70, 30, 45) # Zapasowy, głęboki odcień
+        return (70, 30, 45)
 
 
 # ============================================================
@@ -1956,8 +1947,6 @@ def generuj_cover_fb(
         255,
     )
 
-    # Używamy zaciemnionego koloru z okładki, zamiast surowego grafitu, 
-    # dla spójności i czytelności
     kolor_pomocniczy = kolor_akcentowy + (255,)
 
     poczatek_linii = y
@@ -1993,7 +1982,7 @@ def generuj_cover_fb(
         tekst=tekst_gora,
         sciezka_fontu=SCIEZKA_FONT_BOLD,
         maks_rozmiar=61,
-        min_rozmiar=26,  # <--- Zmieniono z 38 na 26
+        min_rozmiar=26,  
         maks_szerokosc=690,
         maks_wysokosc=220,
         odstep_linii=10,
@@ -2052,7 +2041,7 @@ def generuj_cover_fb(
                 y + wysokosc_badge,
             ),
             radius=28,
-            fill=kolor_pomocniczy, # Detal dopasowany do okładki
+            fill=kolor_pomocniczy, 
         )
 
         draw.text(
@@ -2073,7 +2062,6 @@ def generuj_cover_fb(
     else:
         koniec_linii = y
 
-    # Pionowa linia dopasowana do tekstu.
     draw.rounded_rectangle(
         (
             160,
@@ -2082,7 +2070,7 @@ def generuj_cover_fb(
             koniec_linii,
         ),
         radius=4,
-        fill=kolor_pomocniczy, # Detal dopasowany do okładki
+        fill=kolor_pomocniczy, 
     )
 
     # ========================================================
@@ -2093,7 +2081,6 @@ def generuj_cover_fb(
         zrodlo_okladki
     )
 
-    # Większa okładka – niemal do granic bezpiecznego obszaru.
     okladka.thumbnail(
         (455, 600),
         Image.Resampling.LANCZOS,
@@ -2610,10 +2597,16 @@ with tab1:
         placeholder="https://...",
     )
 
+    url_zdjecia_reczny = st.text_input(
+        "🖼️ (Opcjonalnie) Wymuś konkretne zdjęcie (wklej bezpośredni link URL):",
+        placeholder="https://...",
+        help="Zostaw puste, aby automat sam znalazł zdjęcie. Wypełnij, jeśli automat pobiera złe (np. reklamy lub rolety)."
+    )
+
     if st.button(
         "🚀 Pobierz i generuj grafiki",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     ):
         if not url_input.strip():
             st.warning(
@@ -2645,7 +2638,8 @@ with tab1:
                         tytul,
                         obraz_bytes,
                     ) = pobierz_dane_z_artykulu(
-                        url_input.strip()
+                        url=url_input.strip(),
+                        wymuszony_url_zdjecia=url_zdjecia_reczny.strip() if url_zdjecia_reczny.strip() else None
                     )
 
                     (
@@ -2723,7 +2717,7 @@ with tab1:
                             klucz
                         ],
                         caption=podpis,
-                        use_container_width=True,
+                        width="stretch",
                     )
 
                     st.download_button(
@@ -2733,7 +2727,7 @@ with tab1:
                         ],
                         file_name=nazwa_pliku,
                         mime="image/jpeg",
-                        use_container_width=True,
+                        width="stretch",
                         key=f"pobierz_{klucz}",
                         on_click=aktualizuj_licznik,
                         args=(
@@ -2813,7 +2807,7 @@ with tab1:
 
                 if kol_a.button(
                     "🎨 Zastosuj kolor",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     przelicz_posty(
                         hex_na_rgb(nowy_kolor)
@@ -2823,7 +2817,7 @@ with tab1:
 
                 if kol_b.button(
                     "↩️ Kolor ze zdjęcia",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     przelicz_posty(None)
                     st.rerun()
@@ -2854,7 +2848,7 @@ with tab1:
 
         if st.button(
             "🔄 Zaktualizuj napisy",
-            use_container_width=True,
+            width="stretch",
         ):
             try:
                 (
@@ -2968,7 +2962,7 @@ with tab2:
     if st.button(
         "🎨 Generuj nowoczesny cover",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     ):
         if wgrana_okladka is None:
             st.warning(
@@ -3073,7 +3067,7 @@ with tab2:
                     else ""
                 )
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.download_button(
@@ -3081,7 +3075,7 @@ with tab2:
             data=cover_bytes,
             file_name="Cover_FB_1640x720.jpg",
             mime="image/jpeg",
-            use_container_width=True,
+            width="stretch",
             on_click=aktualizuj_licznik,
             args=(
                 "Nowoczesny Cover FB",
