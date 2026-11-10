@@ -1576,8 +1576,14 @@ def generuj_baner_wydania(
 
     lewy, prawy, auto = kolory_baneru(zrodlo_okladki, styl)
 
-    if nowy:
-        auto = _hsv_rgb((hues[0] + 0.5) % 1.0, 0.6, 1.0)
+    # przycisk "z okładki": jasna wersja kolorów występujących na okładce,
+    # wybieramy najjaśniejszą (żółć/limonka/pomarańcz) – dobrze kontrastuje
+    # z ciemnym tekstem na przycisku i pasuje do okładki
+    kandydaci = [_hsv_rgb(h, 0.80, 1.0) for h in hues]
+    auto = max(
+        kandydaci,
+        key=lambda c: 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2],
+    )
 
     if kolor_przycisku is None:
         kolor_przycisku = auto or (198, 255, 46)
