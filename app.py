@@ -36,7 +36,7 @@ except ImportError:
 
 STOPKA_DOMYSLNA = "ARTYKUŁ W KOMENTARZU"
 
-WERSJA_APP = "6.0 – zakładka banerów wydania 800×170 (nowoczesne style)"
+WERSJA_APP = "6.1 – baner wydania 800×170 (style nowoczesne, suwaki okładki)"
 
 SZEROKOSC_POSTA = 1080
 WYSOKOSC_POSTA = 1080
@@ -1455,46 +1455,6 @@ def paleta_okladki(zrodlo, ile=3):
         return [0.60, 0.70, 0.80]
 
 
-def _urzadzenie(okladka, szer, wys, promien, ramka, kat):
-    """Prosty mockup tabletu/telefonu z okładką (kadr od góry)."""
-    w_in, h_in = szer - 2 * ramka, wys - 2 * ramka
-
-    skala = w_in / okladka.width
-
-    ob = okladka.resize(
-        (w_in, max(1, int(okladka.height * skala))),
-        Image.Resampling.LANCZOS,
-    )
-    ob = ob.crop((0, 0, w_in, h_in))
-
-    obudowa = Image.new("RGBA", (szer, wys), (0, 0, 0, 0))
-    d = ImageDraw.Draw(obudowa)
-
-    d.rounded_rectangle(
-        (0, 0, szer - 1, wys - 1),
-        radius=promien,
-        fill=(236, 236, 240, 255),
-    )
-
-    d.rounded_rectangle(
-        (ramka - 3, ramka - 3, szer - ramka + 2, wys - ramka + 2),
-        radius=max(2, promien - ramka + 3),
-        fill=(20, 20, 24, 255),
-    )
-
-    maska = Image.new("L", (w_in, h_in), 0)
-
-    ImageDraw.Draw(maska).rounded_rectangle(
-        (0, 0, w_in - 1, h_in - 1),
-        radius=max(2, promien - ramka),
-        fill=255,
-    )
-
-    obudowa.paste(ob, (ramka, ramka), maska)
-
-    return obudowa.rotate(kat, resample=Image.Resampling.BICUBIC, expand=True)
-
-
 def _naloz(canvas, el, x, y):
     """alpha_composite z bezpiecznym przycinaniem (ujemne/wystające pozycje)."""
     L, T = max(0, -x), max(0, -y)
@@ -1517,18 +1477,6 @@ def _wklej_z_cieniem(canvas, el, x, y, rozmycie=9, alfa=0.5, przes=(4, 6)):
 
     canvas.alpha_composite(warstwa)
     _naloz(canvas, el, x, y)
-
-
-def _przyciemnij(img, f, rozmycie=0):
-    rgb = ImageEnhance.Brightness(img.convert("RGB")).enhance(f)
-
-    if rozmycie:
-        rgb = rgb.filter(ImageFilter.GaussianBlur(rozmycie))
-
-    rgb = rgb.convert("RGBA")
-    rgb.putalpha(img.getchannel("A"))
-
-    return rgb
 
 
 def okladka_1x(okladka, szer, kat=0, ostrosc=120):
@@ -1556,6 +1504,7 @@ def okladka_1x(okladka, szer, kat=0, ostrosc=120):
 
     rgb = rgb.convert("RGBA")
     rgb.putalpha(alfa)
+
     return rgb
 
 
@@ -1808,7 +1757,7 @@ def generuj_baner_wydania(
         Image.Resampling.LANCZOS,
     )
 
-        # ---------- 4) OKŁADKA W SKALI 1x ----------
+    # ---------- 4) OKŁADKA W SKALI 1x ----------
     sz = int(szer_okladki)
     glowna = okladka_1x(okladka, sz, ostrosc=ostrosc)
 
@@ -1821,8 +1770,15 @@ def generuj_baner_wydania(
     else:
         x = 530                              # style z panelem/łukiem
 
-    _wklej_z_cieniem(baza, glowna, x, int(poz_y),
-                     rozmycie=12, alfa=0.65, przes=(5, 8))
+    _wklej_z_cieniem(
+        baza,
+        glowna,
+        x,
+        int(poz_y),
+        rozmycie=12,
+        alfa=0.65,
+        przes=(5, 8),
+    )
 
     return baza.convert("RGB")
 
@@ -2423,25 +2379,24 @@ with tab3:
         numer_baner = st.text_input("Numer wydania:", value="10/2026")
 
         styl_baner = st.selectbox("Styl:", STYLE_BANERA)
+
         szer_okl = st.slider("Szerokość okładki (px)", 120, 320, 215)
         poz_y_okl = st.slider("Pozycja pionowa okładki", -150, 40, 12)
         ostrosc_okl = st.slider("Ostrość okładki (%)", 0, 300, 120, step=10)
 
         if okladka_baner is not None:
-            _ob = wczytaj_obraz(okladka_baner.getvalue())
-            st.caption(f"Wgrana okładka: {_ob.width} × {_ob.height} px")
-            if _ob.width < 600:
-                st.warning(
-                    "Okładka ma mało pikseli – będzie miękka. "
-                    "Najlepiej wgrać plik min. 650 px szerokości."
-                )
-    if okladka_baner is not None:
-        _ob = wczytaj_obraz(okladka_baner.getvalue())
-        if _ob.width < 500:
-            st.warning(
-                f"Okładka ma tylko {_ob.width} px szerokości – będzie "
-                "nieostra. Wgraj plik min. 500–600 px szerokości."
-        )        
+            try:
+                _ob = wczytaj_obraz(okladka_baner.getvalue())
+                st.caption(f"Wgrana okładka: {_ob.width} × {_ob.height} px")
+
+                if _ob.width < 600:
+                    st.warning(
+                        "Okładka ma mało pikseli – będzie miękka. "
+                        "Najlepiej wgrać plik min. 650 px szerokości."
+                    )
+            except Exception:
+                st.error("Nie można odczytać pliku okładki.")
+
     with c2:
         gora_baner = st.text_input(
             "Linia nad tytułem:",
