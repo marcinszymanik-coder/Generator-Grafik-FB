@@ -1531,13 +1531,12 @@ def _przyciemnij(img, f, rozmycie=0):
     return rgb
 
 
-def okladka_1x(okladka, szer, kat=0):
-    """Okładka w docelowej skali 1x, ostra (jedno skalowanie z oryginału)."""
+def okladka_1x(okladka, szer, kat=0, ostrosc=120):
+    """Okładka w docelowej skali 1x (jedno skalowanie z oryginału)."""
     h = max(1, int(okladka.height * szer / okladka.width))
 
     if kat:
-        N = 3  # supersampling na czas obrotu
-
+        N = 3
         ob = okladka.resize((szer * N, h * N), Image.Resampling.LANCZOS)
         ob = ob.rotate(kat, resample=Image.Resampling.BICUBIC, expand=True)
         ob = ob.resize(
@@ -1548,14 +1547,15 @@ def okladka_1x(okladka, szer, kat=0):
         ob = okladka.resize((szer, h), Image.Resampling.LANCZOS)
 
     alfa = ob.getchannel("A")
+    rgb = ob.convert("RGB")
 
-    rgb = ob.convert("RGB").filter(
-        ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=2)
-    )
+    if ostrosc > 0:
+        rgb = rgb.filter(
+            ImageFilter.UnsharpMask(radius=0.8, percent=int(ostrosc), threshold=1)
+        )
 
     rgb = rgb.convert("RGBA")
     rgb.putalpha(alfa)
-
     return rgb
 
 
@@ -1614,6 +1614,9 @@ def generuj_baner_wydania(
     styl="Aurora (nowoczesny)",
     kolor_przycisku=(198, 255, 46),
     prefiks_tytulu="Budujemy Dom",
+    szer_okladki=215,
+    poz_y=12,
+    ostrosc=120,
 ):
     S = BANER_SKALA
     W, H = BANER_W * S, BANER_H * S
@@ -1805,21 +1808,21 @@ def generuj_baner_wydania(
         Image.Resampling.LANCZOS,
     )
 
-        # ---------- 4) OKŁADKA W SKALI 1x (ostra, duża, ucięta od dołu) ----------
-    if styl == STYLE_BANERA[0]:  # Aurora
-        glowna = okladka_1x(okladka, 215)
-        glowna = ImageOps.expand(glowna, border=1, fill=(255, 255, 255, 110))
-        _wklej_z_cieniem(baza, glowna, 560, 12, rozmycie=12, alfa=0.65, przes=(5, 8))
+        # ---------- 4) OKŁADKA W SKALI 1x ----------
+    sz = int(szer_okladki)
+    glowna = okladka_1x(okladka, sz, ostrosc=ostrosc)
 
-    elif styl == STYLE_BANERA[1]:  # Rozmyta okładka
-        glowna = okladka_1x(okladka, 225)
-        glowna = ImageOps.expand(glowna, border=2, fill=(255, 255, 255, 255))
-        _wklej_z_cieniem(baza, glowna, 545, 12, rozmycie=12, alfa=0.65, przes=(5, 8))
+    ramka = 1 if styl == STYLE_BANERA[0] else 2
+    kolor_ramki = (255, 255, 255, 110) if ramka == 1 else (255, 255, 255, 255)
+    glowna = ImageOps.expand(glowna, border=ramka, fill=kolor_ramki)
 
-    else:  # Gradient + łuk / Ciemny + panel
-        ob = ImageOps.expand(okladka_1x(okladka, 190), border=2,
-                             fill=(255, 255, 255, 255))
-        _wklej_z_cieniem(baza, ob, 530, 12)
+    if nowy:
+        x = BANER_W - glowna.width - 24      # równy margines od prawej
+    else:
+        x = 530                              # style z panelem/łukiem
+
+    _wklej_z_cieniem(baza, glowna, x, int(poz_y),
+                     rozmycie=12, alfa=0.65, przes=(5, 8))
 
     return baza.convert("RGB")
 
@@ -2420,6 +2423,18 @@ with tab3:
         numer_baner = st.text_input("Numer wydania:", value="10/2026")
 
         styl_baner = st.selectbox("Styl:", STYLE_BANERA)
+        szer_okl = st.slider("Szerokość okładki (px)", 120, 320, 215)
+        poz_y_okl = st.slider("Pozycja pionowa okładki", -150, 40, 12)
+        ostrosc_okl = st.slider("Ostrość okładki (%)", 0, 300, 120, step=10)
+
+        if okladka_baner is not None:
+            _ob = wczytaj_obraz(okladka_baner.getvalue())
+            st.caption(f"Wgrana okładka: {_ob.width} × {_ob.height} px")
+            if _ob.width < 600:
+                st.warning(
+                    "Okładka ma mało pikseli – będzie miękka. "
+                    "Najlepiej wgrać plik min. 650 px szerokości."
+                )
     if okladka_baner is not None:
         _ob = wczytaj_obraz(okladka_baner.getvalue())
         if _ob.width < 500:
@@ -2463,6 +2478,9 @@ with tab3:
                     styl=styl_baner,
                     kolor_przycisku=KOLORY_PRZYCISKU[kolor_btn_nazwa],
                     prefiks_tytulu=prefiks_baner.strip(),
+                    szer_okladki=szer_okl,
+                    poz_y=poz_y_okl,
+                    ostrosc=ostrosc_okl,
                 )
 
                 st.session_state.baner_png = baner_do_png_bytes(baner)
