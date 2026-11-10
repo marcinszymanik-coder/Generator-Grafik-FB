@@ -1384,7 +1384,6 @@ STYLE_BANERA = [
     "Rozmyta okładka (nowoczesny)",
     "Gradient + łuk",
     "Ciemny + panel",
-    "Tablet + telefon",
 ]
 STYLE_NOWOCZESNE = STYLE_BANERA[:2]
 
@@ -1551,7 +1550,7 @@ def okladka_1x(okladka, szer, kat=0):
     alfa = ob.getchannel("A")
 
     rgb = ob.convert("RGB").filter(
-        ImageFilter.UnsharpMask(radius=0.9, percent=110, threshold=2)
+        ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=2)
     )
 
     rgb = rgb.convert("RGBA")
@@ -1806,33 +1805,21 @@ def generuj_baner_wydania(
         Image.Resampling.LANCZOS,
     )
 
-    # ---------- 4) OKŁADKI W SKALI 1x (ostre) ----------
+        # ---------- 4) OKŁADKA W SKALI 1x (ostra, duża, ucięta od dołu) ----------
     if styl == STYLE_BANERA[0]:  # Aurora
-        tyl = _przyciemnij(okladka_1x(okladka, 128, kat=7), 0.55, rozmycie=1.3)
-        _wklej_z_cieniem(baza, tyl, 672, 30, rozmycie=8, alfa=0.4)
-
-        glowna = okladka_1x(okladka, 168, kat=-5)
-        _wklej_z_cieniem(baza, glowna, 538, 10, rozmycie=11, alfa=0.6, przes=(5, 8))
+        glowna = okladka_1x(okladka, 215)
+        glowna = ImageOps.expand(glowna, border=1, fill=(255, 255, 255, 110))
+        _wklej_z_cieniem(baza, glowna, 560, 12, rozmycie=12, alfa=0.65, przes=(5, 8))
 
     elif styl == STYLE_BANERA[1]:  # Rozmyta okładka
-        glowna = okladka_1x(okladka, 172)
+        glowna = okladka_1x(okladka, 225)
         glowna = ImageOps.expand(glowna, border=2, fill=(255, 255, 255, 255))
-        _wklej_z_cieniem(baza, glowna, 575, 14, rozmycie=11, alfa=0.65, przes=(5, 8))
+        _wklej_z_cieniem(baza, glowna, 545, 12, rozmycie=12, alfa=0.65, przes=(5, 8))
 
-    elif styl in ("Gradient + łuk", "Ciemny + panel"):
-        ob = ImageOps.expand(
-            okladka_1x(okladka, 131),
-            border=2,
-            fill=(255, 255, 255, 255),
-        )
-        _wklej_z_cieniem(baza, ob, 515, 12)
-
-    else:  # Tablet + telefon
-        tablet = _urzadzenie(okladka, 125, 165, 11, 5, 4)
-        telefon = _urzadzenie(okladka, 70, 125, 9, 4, -4)
-
-        _wklej_z_cieniem(baza, tablet, 440, 6)
-        _wklej_z_cieniem(baza, telefon, 665, 30)
+    else:  # Gradient + łuk / Ciemny + panel
+        ob = ImageOps.expand(okladka_1x(okladka, 190), border=2,
+                             fill=(255, 255, 255, 255))
+        _wklej_z_cieniem(baza, ob, 530, 12)
 
     return baza.convert("RGB")
 
@@ -2433,7 +2420,13 @@ with tab3:
         numer_baner = st.text_input("Numer wydania:", value="10/2026")
 
         styl_baner = st.selectbox("Styl:", STYLE_BANERA)
-
+    if okladka_baner is not None:
+        _ob = wczytaj_obraz(okladka_baner.getvalue())
+        if _ob.width < 500:
+            st.warning(
+                f"Okładka ma tylko {_ob.width} px szerokości – będzie "
+                "nieostra. Wgraj plik min. 500–600 px szerokości."
+        )        
     with c2:
         gora_baner = st.text_input(
             "Linia nad tytułem:",
