@@ -2468,6 +2468,173 @@ def aktualizuj_licznik(
             blad,
         )
 
+# ============================================================
+# BANER 800x170 – WYDANIE MAGAZYNU
+# ============================================================
+
+BANER_W, BANER_H = 800, 170
+BANER_SKALA = 2  # rysujemy w 1600x340 i zmniejszamy (lepsze krawędzie)
+
+KOLORY_PRZYCISKU = {
+    "Limonkowy": (198, 255, 46),
+    "Żółty": (255, 230, 0),
+    "Biały": (255, 255, 255),
+    "Auto (z okładki)": None,
+}
+
+
+def _hsv_rgb(h, s, v):
+    r, g, b = colorsys.hsv_to_rgb(h, ogranicz(s, 0, 1), ogranicz(v, 0, 1))
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def kolory_baneru(zrodlo_okladki, styl):
+    """Zwraca (kolor_lewy, kolor_prawy, kolor_przycisku_auto)."""
+    if styl == "Ciemny + panel":
+        return (31, 33, 38), (28, 30, 34), None
+
+    odcien, nas = analiza_barwna(zrodlo_okladki)
+    nas = ogranicz(nas * 2.5, 0.45, 0.72)
+
+    lewy = _hsv_rgb(odcien, nas, 0.42)
+    prawy = _hsv_rgb((odcien + 0.03) % 1.0, nas * 0.9, 0.58)
+    # przycisk: jasny, kontrastowy odcień z przeciwnej strony koła barw
+    auto = _hsv_rgb((odcien + 0.5) % 1.0, 0.55, 1.0)
+    return lewy, prawy, auto
+
+
+def _urzadzenie(okladka, szer, wys, promien, ramka, kat):
+    """Prosty mockup tabletu/telefonu z okładką (kadr od góry)."""
+    w_in, h_in = szer - 2 * ramka, wys - 2 * ramka
+    skala = w_in / okladka.width
+    ob = okladka.resize((w_in, max(1, int(okladka.height * skala))),
+                        Image.Resampling.LANCZOS)
+    ob = ob.crop((0, 0, w_in, h_in))
+
+    obudowa = Image.new("RGBA", (szer, wys), (0, 0, 0, 0))
+    d = ImageDraw.Draw(obudowa)
+    d.rounded_rectangle((0, 0, szer - 1, wys - 1), radius=promien,
+                        fill=(236, 236, 240, 255))
+    d.rounded_rectangle((ramka - 3, ramka - 3, szer - ramka + 2, wys - ramka + 2),
+                        radius=max(2, promien - ramka + 3), fill=(20, 20, 24, 255))
+
+    maska = Image.new("L", (w_in, h_in), 0)
+    ImageDraw.Draw(maska).rounded_rectangle(
+        (0, 0, w_in - 1, h_in - 1), radius=max(2, promien - ramka), fill=255)
+    obudowa.paste(ob, (ramka, ramka), maska)
+    return obudowa.rotate(kat, resample=Image.Resampling.BICUBIC, expand=True)
+
+
+def _wklej_z_cieniem(canvas, element, poz, rozmycie=18, alfa=0.45, przesuniecie=(8, 10)):
+    cien = Image.new("RGBA", element.size, (0, 0, 0, 0))
+    cien.putalpha(element.getchannel("A").point(lambda a: int(a * alfa)))
+    warstwa = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    warstwa.alpha_composite(
+        cien, (poz[0] + przesuniecie[0], poz[1] + przesuniecie[1])
+        if poz[0] + przesuniecie[0] >= 0 and poz[1] + przesuniecie[1] >= 0 else (0, 0))
+    warstwa = warstwa.filter(ImageFilter.GaussianBlur(rozmycie))
+    canvas = Image.alpha_composite(canvas, warstwa)
+    canvas.alpha_composite(element, (max(0, poz[0]), max(0, poz[1])))
+    return canvas
+
+
+def generuj_baner_wydania(
+    zrodlo_okladki,
+    numer_wydania,
+    gorna_linia="CZYTAJ TAK, JAK LUBISZ",
+    tekst_przycisku="Wykup dostęp już ",
+    tekst_przycisku_pogrubiony="od 1 zł",
+    styl="Gradient + łuk",
+    kolor_przycisku=(198, 255, 46),
+    prefiks_tytulu="Budujemy Dom",
+):
+    S = BANER_SKALA
+    W, H = BANER_W * S, BANER_H * S
+
+    lewy, prawy, auto_przycisk = kolory_baneru(zrodlo_okladki, styl)
+    if kolor_przycisku is None:
+        kolor_przycisku = auto_przycisk or (198, 255, 46)
+
+    # --- tło: poziomy gradient ---
+    canvas = Image.new("RGBA", (W, H), lewy + (255,))
+    d = ImageDraw.Draw(canvas)
+    for x in range(W):
+        d.line([(x, 0), (x, H)],
+               fill=mieszaj_kolory(lewy, prawy, x / (W - 1)) + (255,))
+
+    okladka = wczytaj_obraz(zrodlo_okladki)
+    jasniejszy = mieszaj_kolory(prawy, (255, 255, 255), 0.14)
+
+    # --- element graficzny po prawej ---
+    if styl == "Gradient + łuk":
+        warstwa = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(warstwa).ellipse(
+            (880, -260, 880 + 1300, -260 + 1300), fill=jasniejszy + (120,))
+        canvas = Image.alpha_composite(canvas, warstwa)
+
+    if styl == "Ciemny + panel":
+        warstwa = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(warstwa).rounded_rectangle(
+            (800, 100, 1500, H + 200), radius=70, fill=(54, 56, 62, 255))
+        canvas = Image.alpha_composite(canvas, warstwa)
+
+    if styl in ("Gradient + łuk", "Ciemny + panel"):
+        szer = 262
+        ob = okladka.resize((szer, int(okladka.height * szer / okladka.width)),
+                            Image.Resampling.LANCZOS)
+        ob = ImageOps.expand(ob, border=3, fill=(255, 255, 255, 255))
+        ob = ob.crop((0, 0, ob.width, min(ob.height, H - 24)))  # ucięcie od dołu
+        canvas = _wklej_z_cieniem(canvas, ob, (1030, 24))
+
+    else:  # "Tablet + telefon"
+        tablet = _urzadzenie(okladka, 250, 330, 22, 10, 4)
+        telefon = _urzadzenie(okladka, 140, 250, 18, 7, -4)
+        canvas = _wklej_z_cieniem(canvas, tablet, (880, 12))
+        canvas = _wklej_z_cieniem(canvas, telefon, (1330, 60))
+
+    # --- teksty ---
+    draw = ImageDraw.Draw(canvas)
+    x0 = 60
+    bialy = (255, 255, 255, 255)
+
+    f_gora = pobierz_czcionke(SCIEZKA_FONT_SEMIBOLD, 22)
+    draw.text((x0, 66), gorna_linia.upper(), font=f_gora, fill=bialy)
+
+    tytul = f"{prefiks_tytulu} {numer_wydania}".strip()
+    rozmiar = 56
+    while rozmiar > 28:
+        f_tytul = pobierz_czcionke(SCIEZKA_FONT_BOLD, rozmiar)
+        if szerokosc_tekstu(f_tytul, tytul) <= 900:
+            break
+        rozmiar -= 2
+    draw.text((x0, 100), tytul, font=f_tytul, fill=bialy)
+
+    # przycisk
+    f_p = pobierz_czcionke(SCIEZKA_FONT_SEMIBOLD, 25)
+    f_pb = pobierz_czcionke(SCIEZKA_FONT_BOLD, 25)
+    w1 = szerokosc_tekstu(f_p, tekst_przycisku)
+    w2 = szerokosc_tekstu(f_pb, tekst_przycisku_pogrubiony)
+    pad = 30
+    bw, bh = int(w1 + w2 + 2 * pad), 64
+    by = 200
+    draw.rounded_rectangle((x0, by, x0 + bw, by + bh), radius=8,
+                           fill=kolor_przycisku + (255,))
+    ciemny = (27, 27, 31, 255)
+    draw.text((x0 + pad, by + bh / 2), tekst_przycisku, font=f_p,
+              fill=ciemny, anchor="lm")
+    draw.text((x0 + pad + w1, by + bh / 2), tekst_przycisku_pogrubiony,
+              font=f_pb, fill=ciemny, anchor="lm")
+
+    wynik = canvas.convert("RGB").resize((BANER_W, BANER_H),
+                                         Image.Resampling.LANCZOS)
+    return wynik
+
+
+def baner_do_png_bytes(obraz):
+    b = BytesIO()
+    obraz.save(b, format="PNG", optimize=True)
+    return b.getvalue()
+
 
 # ============================================================
 # STREAMLIT
@@ -2573,10 +2740,11 @@ if "wygenerowano" not in st.session_state:
     st.session_state.wygenerowano = False
 
 
-tab1, tab2 = st.tabs(
+tab1, tab2, tab3 = st.tabs(
     [
         "📲 Posty do artykułu",
         "🖼️ Nowoczesny cover FB",
+        "🏷️ Baner wydania 800×170",
     ]
 )
 
@@ -3081,4 +3249,70 @@ with tab2:
                 "Nowoczesny Cover FB",
                 wybrane_logo_cover,
             ),
+        )
+# ============================================================
+# ZAKŁADKA 3 – baner
+# ============================================================
+
+with tab3:
+    st.info("Baner jest generowany w rozmiarze 800 × 170 px.")
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        okladka_baner = st.file_uploader(
+            "Wgraj okładkę wydania (JPG/PNG/WEBP):",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="okladka_baner",
+        )
+        numer_baner = st.text_input("Numer wydania:", value="10/2026")
+        styl_baner = st.selectbox(
+            "Styl:", ["Gradient + łuk", "Ciemny + panel", "Tablet + telefon"]
+        )
+
+    with c2:
+        gora_baner = st.text_input("Linia nad tytułem:", value="CZYTAJ TAK, JAK LUBISZ")
+        prefiks_baner = st.text_input("Tytuł magazynu:", value="Budujemy Dom")
+        tekst_btn = st.text_input("Tekst przycisku:", value="Wykup dostęp już ")
+        tekst_btn_b = st.text_input("Pogrubiony fragment:", value="od 1 zł")
+        kolor_btn_nazwa = st.selectbox("Kolor przycisku:", list(KOLORY_PRZYCISKU))
+
+    if st.button("🏷️ Generuj baner", type="primary", width="stretch"):
+        if okladka_baner is None:
+            st.warning("Najpierw wgraj okładkę.")
+        else:
+            try:
+                dane = okladka_baner.getvalue()
+                wczytaj_obraz(dane)
+                baner = generuj_baner_wydania(
+                    zrodlo_okladki=dane,
+                    numer_wydania=numer_baner.strip(),
+                    gorna_linia=gora_baner,
+                    tekst_przycisku=tekst_btn,
+                    tekst_przycisku_pogrubiony=tekst_btn_b,
+                    styl=styl_baner,
+                    kolor_przycisku=KOLORY_PRZYCISKU[kolor_btn_nazwa],
+                    prefiks_tytulu=prefiks_baner.strip(),
+                )
+                st.session_state.baner_png = baner_do_png_bytes(baner)
+                st.session_state.baner_jpg = obraz_do_jpeg_bytes(baner, 95)
+                st.session_state.baner_nazwa = numer_baner.strip().replace("/", "-")
+            except Exception as blad:
+                st.error("Nie udało się wygenerować banera.")
+                st.caption(str(blad))
+
+    if st.session_state.get("baner_png"):
+        st.image(st.session_state.baner_png, caption="Baner 800×170 px")
+        b1, b2 = st.columns(2)
+        b1.download_button(
+            "📥 Pobierz PNG", st.session_state.baner_png,
+            file_name=f"baner_{st.session_state.baner_nazwa}.png",
+            mime="image/png", width="stretch",
+            on_click=aktualizuj_licznik, args=("Baner wydania PNG", "Baner"),
+        )
+        b2.download_button(
+            "📥 Pobierz JPG", st.session_state.baner_jpg,
+            file_name=f"baner_{st.session_state.baner_nazwa}.jpg",
+            mime="image/jpeg", width="stretch",
+            on_click=aktualizuj_licznik, args=("Baner wydania JPG", "Baner"),
         )
